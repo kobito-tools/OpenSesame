@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- ウィンドウ整形はSystem Events経由で前面ウィンドウを動かす。許可ダイアログに出る説明。 -->
+  <key>NSAppleEventsUsageDescription</key>
+  <string>OpenSesame! moves and resizes the front window through System Events when you use a window layout key.</string>
+</dict>
+</plist>
