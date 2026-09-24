@@ -1,6 +1,6 @@
 [package]
 name = "opensesame"
-version = "0.1.0"
+version = "0.1.1"
 description = "Hold a key and open anything: apps, folders and window layouts"
 authors = ["ta-nish18"]
 license = "MIT"
