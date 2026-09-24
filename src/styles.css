@@ -417,3 +417,11 @@ button.keyboard-key { cursor: pointer; }
   .subtitle { display: none; }
   .keyboard-pane { --key-size: 46px; }
 }
+
+/* 設定画面の読み込み中・失敗時の表示 */
+.startup-message { padding: 32px; display: grid; gap: 12px; }
+.startup-message strong { font-size: 15px; }
+.startup-message pre {
+  margin: 0; padding: 12px; border-radius: 10px; background: rgba(23, 33, 58, .06);
+  white-space: pre-wrap; word-break: break-all; font-size: 12px; user-select: text;
+}
