@@ -50,7 +50,13 @@ fn save_config(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<LauncherConfig, String> {
-    validate_config(&config)?;
+    {
+        let current = state
+            .config
+            .read()
+            .map_err(|_| "設定のロックを取得できません".to_string())?;
+        validate_config(&config, &current)?;
+    }
     storage::save(&state.config_path, &config)?;
     *state
         .config
@@ -204,7 +210,9 @@ fn error(code: &str, argument: &str) -> String {
     }
 }
 
-fn validate_config(config: &LauncherConfig) -> Result<(), String> {
+/// 対象の存在確認は新規登録やパス変更のときだけ行う。
+/// 登録済みの対象が後から消えても、名前やキーの変更・削除はできるようにするため。
+fn validate_config(config: &LauncherConfig, previous: &LauncherConfig) -> Result<(), String> {
     let mut keys = HashSet::new();
     if !LANGUAGES.contains(&config.language.as_str()) {
         return Err(error("invalid-language", ""));
@@ -230,7 +238,11 @@ fn validate_config(config: &LauncherConfig) -> Result<(), String> {
         if !keys.insert(item.key.as_str()) {
             return Err(error("duplicate-key", &item.key));
         }
-        if !Path::new(&item.target.value).exists() {
+        let already_registered = previous
+            .items
+            .iter()
+            .any(|saved| saved.id == item.id && saved.target.value == item.target.value);
+        if !already_registered && !Path::new(&item.target.value).exists() {
             return Err(error("missing-target", &item.target.value));
         }
     }
@@ -441,13 +453,13 @@ mod tests {
         let mut config = LauncherConfig::default();
         config.activation.macos.clear();
         assert_eq!(
-            validate_config(&config).unwrap_err(),
+            validate_config(&config, &LauncherConfig::default()).unwrap_err(),
             "applauncher-error:activation-empty"
         );
         let mut config = LauncherConfig::default();
         config.keyboard_layout = "grouped".into();
         assert_eq!(
-            validate_config(&config).unwrap_err(),
+            validate_config(&config, &LauncherConfig::default()).unwrap_err(),
             "applauncher-error:invalid-layout"
         );
     }
@@ -456,14 +468,14 @@ mod tests {
     fn rejects_unknown_language() {
         let mut config = LauncherConfig::default();
         config.language = "fr".into();
-        assert!(validate_config(&config).is_err());
+        assert!(validate_config(&config, &LauncherConfig::default()).is_err());
     }
 
     #[test]
     fn activation_must_not_be_empty() {
         let mut config = LauncherConfig::default();
         config.activation.macos.clear();
-        assert!(validate_config(&config).is_err());
+        assert!(validate_config(&config, &LauncherConfig::default()).is_err());
     }
 
     #[test]
@@ -490,6 +502,48 @@ mod tests {
                 value: None,
             },
         });
-        assert!(validate_config(&config).is_err());
+        assert!(validate_config(&config, &LauncherConfig::default()).is_err());
+    }
+
+    fn item_at(id: &str, key: &str, path: &str) -> LauncherItem {
+        LauncherItem {
+            id: id.into(),
+            target_type: TargetType::Folder,
+            name: id.into(),
+            key: key.into(),
+            target: TargetPath {
+                kind: "path".into(),
+                value: path.into(),
+            },
+            icon: TargetIcon {
+                kind: "system".into(),
+                value: None,
+            },
+        }
+    }
+
+    #[test]
+    fn registered_items_stay_editable_after_their_target_disappears() {
+        let mut saved = LauncherConfig::default();
+        saved.items.push(item_at("gone-1", "KeyA", "/nonexistent/opensesame-1"));
+        saved.items.push(item_at("gone-2", "KeyS", "/nonexistent/opensesame-2"));
+        let mut edited = saved.clone();
+        edited.language = "en".into();
+        edited.items[0].name = "Renamed".into();
+        edited.items[0].key = "KeyD".into();
+        assert!(validate_config(&edited, &saved).is_ok());
+        edited.items.remove(1);
+        assert!(validate_config(&edited, &saved).is_ok());
+    }
+
+    #[test]
+    fn new_items_must_point_to_an_existing_target() {
+        let saved = LauncherConfig::default();
+        let mut edited = saved.clone();
+        edited.items.push(item_at("new", "KeyA", "/nonexistent/opensesame"));
+        assert_eq!(
+            validate_config(&edited, &saved).unwrap_err(),
+            "applauncher-error:missing-target:/nonexistent/opensesame"
+        );
     }
 }
