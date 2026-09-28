@@ -313,6 +313,9 @@ fn show_popup(app: &AppHandle) {
             let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
         }
     }
+    // フルスクリーンのSpaceへ移るたびに効くよう、表示の直前に毎回設定し直す。
+    #[cfg(target_os = "macos")]
+    crate::float_popup_over_fullscreen(&window);
     let _ = window.show();
     // 表示のたびにキーを浮き上がらせるので、画面側へ再生の合図を送る。
     let _ = app.emit_to("popup", "popup-shown", ());

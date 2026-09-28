@@ -2783,6 +2783,8 @@ version = "0.1.1"
 dependencies = [
  "file_icon_provider",
  "image",
+ "objc2",
+ "objc2-app-kit",
  "open",
  "rdev",
  "rfd",
