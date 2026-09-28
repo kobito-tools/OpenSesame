@@ -1,62 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-<defs>
-  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0" stop-color="#FBD38A"/>
-    <stop offset="1" stop-color="#E4913A"/>
-  </linearGradient>
-  <radialGradient id="white" cx="0.4" cy="0.35" r="0.8">
-    <stop offset="0" stop-color="#FFFBF2"/>
-    <stop offset="0.7" stop-color="#F3E3C3"/>
-    <stop offset="1" stop-color="#D9BE8E"/>
-  </radialGradient>
-  <radialGradient id="black" cx="0.4" cy="0.35" r="0.8">
-    <stop offset="0" stop-color="#5A4E47"/>
-    <stop offset="0.7" stop-color="#2A2320"/>
-    <stop offset="1" stop-color="#141010"/>
-  </radialGradient>
-  <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-    <feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#7A3E0C" flood-opacity=".35"/>
-  </filter>
-  <filter id="plate" x="-10%" y="-10%" width="120%" height="120%">
-    <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000" flood-opacity=".22"/>
-  </filter>
-  <clipPath id="clip"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
-</defs>
-<rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)" filter="url(#plate)"/>
-<rect x="100" y="100" width="824" height="824" rx="185" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="3"/>
-<g clip-path="url(#clip)">
-<g transform="translate(330 330) rotate(-35) scale(1.05)" filter="url(#shadow)">
-  <path d="M 0 -78 C 34 -62 54 -8 50 32 C 46 64 25 78 0 78 C -25 78 -46 64 -50 32 C -54 -8 -34 -62 0 -78 Z" fill="url(#white)"/>
-  <path d="M 0 -70 C 6 -30 6 30 0 70" fill="none" stroke="rgba(150,105,55,.35)" stroke-width="4" stroke-linecap="round"/>
-  <ellipse cx="-20" cy="-8" rx="9" ry="30" transform="rotate(12 -20 -8)" fill="rgba(255,255,255,.75)"/>
-</g><g transform="translate(560 270) rotate(20) scale(0.9)" filter="url(#shadow)">
-  <path d="M 0 -78 C 34 -62 54 -8 50 32 C 46 64 25 78 0 78 C -25 78 -46 64 -50 32 C -54 -8 -34 -62 0 -78 Z" fill="url(#black)"/>
-  <path d="M 0 -70 C 6 -30 6 30 0 70" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="4" stroke-linecap="round"/>
-  <ellipse cx="-20" cy="-8" rx="9" ry="30" transform="rotate(12 -20 -8)" fill="rgba(255,255,255,.28)"/>
-</g><g transform="translate(720 420) rotate(65) scale(1.1)" filter="url(#shadow)">
-  <path d="M 0 -78 C 34 -62 54 -8 50 32 C 46 64 25 78 0 78 C -25 78 -46 64 -50 32 C -54 -8 -34 -62 0 -78 Z" fill="url(#white)"/>
-  <path d="M 0 -70 C 6 -30 6 30 0 70" fill="none" stroke="rgba(150,105,55,.35)" stroke-width="4" stroke-linecap="round"/>
-  <ellipse cx="-20" cy="-8" rx="9" ry="30" transform="rotate(12 -20 -8)" fill="rgba(255,255,255,.75)"/>
-</g><g transform="translate(430 530) rotate(110) scale(1.2)" filter="url(#shadow)">
-  <path d="M 0 -78 C 34 -62 54 -8 50 32 C 46 64 25 78 0 78 C -25 78 -46 64 -50 32 C -54 -8 -34 -62 0 -78 Z" fill="url(#white)"/>
-  <path d="M 0 -70 C 6 -30 6 30 0 70" fill="none" stroke="rgba(150,105,55,.35)" stroke-width="4" stroke-linecap="round"/>
-  <ellipse cx="-20" cy="-8" rx="9" ry="30" transform="rotate(12 -20 -8)" fill="rgba(255,255,255,.75)"/>
-</g><g transform="translate(290 700) rotate(-15) scale(0.85)" filter="url(#shadow)">
-  <path d="M 0 -78 C 34 -62 54 -8 50 32 C 46 64 25 78 0 78 C -25 78 -46 64 -50 32 C -54 -8 -34 -62 0 -78 Z" fill="url(#black)"/>
-  <path d="M 0 -70 C 6 -30 6 30 0 70" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="4" stroke-linecap="round"/>
-  <ellipse cx="-20" cy="-8" rx="9" ry="30" transform="rotate(12 -20 -8)" fill="rgba(255,255,255,.28)"/>
-</g><g transform="translate(620 680) rotate(160) scale(1.0)" filter="url(#shadow)">
-  <path d="M 0 -78 C 34 -62 54 -8 50 32 C 46 64 25 78 0 78 C -25 78 -46 64 -50 32 C -54 -8 -34 -62 0 -78 Z" fill="url(#white)"/>
-  <path d="M 0 -70 C 6 -30 6 30 0 70" fill="none" stroke="rgba(150,105,55,.35)" stroke-width="4" stroke-linecap="round"/>
-  <ellipse cx="-20" cy="-8" rx="9" ry="30" transform="rotate(12 -20 -8)" fill="rgba(255,255,255,.75)"/>
-</g><g transform="translate(770 740) rotate(-70) scale(0.8)" filter="url(#shadow)">
-  <path d="M 0 -78 C 34 -62 54 -8 50 32 C 46 64 25 78 0 78 C -25 78 -46 64 -50 32 C -54 -8 -34 -62 0 -78 Z" fill="url(#white)"/>
-  <path d="M 0 -70 C 6 -30 6 30 0 70" fill="none" stroke="rgba(150,105,55,.35)" stroke-width="4" stroke-linecap="round"/>
-  <ellipse cx="-20" cy="-8" rx="9" ry="30" transform="rotate(12 -20 -8)" fill="rgba(255,255,255,.75)"/>
-</g><g transform="translate(520 820) rotate(40) scale(0.75)" filter="url(#shadow)">
-  <path d="M 0 -78 C 34 -62 54 -8 50 32 C 46 64 25 78 0 78 C -25 78 -46 64 -50 32 C -54 -8 -34 -62 0 -78 Z" fill="url(#black)"/>
-  <path d="M 0 -70 C 6 -30 6 30 0 70" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="4" stroke-linecap="round"/>
-  <ellipse cx="-20" cy="-8" rx="9" ry="30" transform="rotate(12 -20 -8)" fill="rgba(255,255,255,.28)"/>
-</g>
-</g>
+  <defs>
+    <linearGradient id="bg-opensesame" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#D4AE66"/><stop offset="1" stop-color="#BE954D"/></linearGradient>
+    <clipPath id="clip-opensesame"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
+    <filter id="drop-opensesame" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000" flood-opacity=".22"/></filter>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg-opensesame)" filter="url(#drop-opensesame)"/>
+  <g clip-path="url(#clip-opensesame)">
+<g stroke="#3B4441" stroke-linejoin="round">
+      <path d="M548 846 L812 846 L1000 1000 L380 1000 Z" fill="#F7E7BA" opacity=".8" stroke="none"/>
+      <path d="M560 236 Q560 190 606 190 L760 190 Q806 190 806 236 L806 846 L560 846 Z" fill="#5B4535" stroke-width="18"/>
+      <path d="M586 244 Q586 216 614 216 L752 216 Q780 216 780 244 L780 846 L586 846 Z" fill="#F7E9BF" stroke-width="12"/>
+      <path d="M586 224 L500 176 L500 896 L586 846 Z" fill="#7A5B45" stroke-width="16"/>
+      <circle cx="526" cy="540" r="11" fill="#D9B45E" stroke-width="7"/>
+    </g><g transform="translate(66 372) scale(11)" stroke-linecap="round" stroke-linejoin="round">
+    
+    <g fill="none" stroke="#3B4441" stroke-width="1.8"><path d="M19 33 l-2 5 l-3 5"/><path d="M29 33 l2 5 l3 5"/></g>
+    <path d="M10 23C10 11 16 5 25 5c8 0 13 6 13 16 0 11-6 16-15 16-8 0-13-5-13-14Z" fill="#E6E3D9" stroke="#3B4441" stroke-width="1.7"/>
+    <path d="M15 13c5-4 13-4 18 0v12c-5 4-13 4-18 0Z" fill="#F6F7F2" stroke="#3B4441" stroke-width="1.4"/>
+    <circle cx="21" cy="18" r="1.4" fill="#3B4441"/><circle cx="28" cy="18" r="1.4" fill="#3B4441"/>
+    <path d="M22 22c2 2 4 2 6 0" fill="none" stroke="#3B4441" stroke-width="1.2" stroke-linecap="round"/>
+    <g fill="none" stroke="#3B4441" stroke-width="1.8"><path d="M37 24 Q41 22 44.5 17"/><path d="M11.5 26 Q8.5 29 8 32.5"/></g>
+    
+  </g>
+  </g>
 </svg>

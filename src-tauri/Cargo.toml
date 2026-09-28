@@ -28,6 +28,9 @@ file_icon_provider = "1.0.2"
 # ポップアップを透過ウィンドウのままにすると、backdrop-filterはデスクトップを
 # ぼかせず背景と同化する。NSVisualEffectViewで実際にぼかす。
 window-vibrancy = "0.6"
+# フルスクリーンのSpaceにもポップアップを出すため、NSWindowの挙動を直接設定する。
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSWindow"] }
 
 # macOSでは自前のCGEventTapを使う。rdevはキー押下のたびにメインスレッド必須の
 # Text Services Managerを呼ぶため、バックグラウンドのフックでは必ずクラッシュする。

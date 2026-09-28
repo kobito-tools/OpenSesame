@@ -346,6 +346,41 @@ fn apply_vibrancy_to_windows(app: &tauri::AppHandle) {
 #[cfg(not(target_os = "macos"))]
 fn apply_vibrancy_to_windows(_app: &tauri::AppHandle) {}
 
+/// 他のアプリがフルスクリーンのとき、通常のウィンドウはそのSpaceに入れず
+/// ポップアップが裏に隠れる。全Spaceに参加させ、フルスクリーンの補助ウィンドウとして
+/// メニューバーより上に重ねる。
+#[cfg(target_os = "macos")]
+pub(crate) fn float_popup_over_fullscreen(window: &tauri::WebviewWindow) {
+    use objc2_app_kit::{NSPopUpMenuWindowLevel, NSWindow, NSWindowCollectionBehavior};
+    let Ok(pointer) = window.ns_window() else {
+        return;
+    };
+    // ns_windowはTauriが保持するNSWindowを指し、ここはメインスレッドで呼ばれる。
+    let ns_window = unsafe { &*pointer.cast::<NSWindow>() };
+    ns_window.setCollectionBehavior(
+        NSWindowCollectionBehavior::CanJoinAllSpaces
+            | NSWindowCollectionBehavior::FullScreenAuxiliary
+            | NSWindowCollectionBehavior::Stationary
+            | NSWindowCollectionBehavior::IgnoresCycle,
+    );
+    ns_window.setLevel(NSPopUpMenuWindowLevel);
+}
+
+/// macOS 10.14以降、Dockに出る通常アプリのウィンドウは他アプリのフルスクリーンの上に
+/// 出られない。設定画面を閉じている間はDockから外し、常駐のアクセサリとして振る舞う。
+#[cfg(target_os = "macos")]
+fn set_dock_visible(app: &tauri::AppHandle, visible: bool) {
+    let policy = if visible {
+        tauri::ActivationPolicy::Regular
+    } else {
+        tauri::ActivationPolicy::Accessory
+    };
+    let _ = app.set_activation_policy(policy);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_dock_visible(_app: &tauri::AppHandle, _visible: bool) {}
+
 /// 設定画面を閉じても常駐し続けるので、終了と再表示の入口をトレイに置く。
 /// Windowsではこれが無いとタスクマネージャー以外で終了できない。
 fn build_tray(app: &tauri::App, language: &str) -> tauri::Result<()> {
@@ -374,6 +409,7 @@ fn build_tray(app: &tauri::App, language: &str) -> tauri::Result<()> {
 
 pub(crate) fn show_settings_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("settings") {
+        set_dock_visible(app, true);
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
@@ -416,6 +452,9 @@ pub fn run() {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
+                if window.label() == "settings" {
+                    set_dock_visible(window.app_handle(), false);
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
