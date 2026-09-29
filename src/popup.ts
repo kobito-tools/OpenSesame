@@ -2,6 +2,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { setLanguage, t } from "./i18n";
 import { buildKeyboard, type KeyboardSlot } from "./keys";
+import { kobito } from "./kobito";
 import type { LauncherConfig, WindowActionBinding } from "./types";
 
 type DisplayEntry = {
@@ -70,7 +71,9 @@ function paint(root: HTMLElement, config: LauncherConfig): void {
   if (allEntries.length === 0) {
     const empty = document.createElement("div");
     empty.className = "popup-empty";
-    empty.textContent = t("popup.empty");
+    const message = document.createElement("span");
+    message.textContent = t("popup.empty");
+    empty.append(kobito("kobito-empty"), message);
     panel.append(empty);
   } else {
     const slots = new Map<string, KeyboardSlot>(
@@ -80,6 +83,8 @@ function paint(root: HTMLElement, config: LauncherConfig): void {
       ]),
     );
     panel.append(buildKeyboard(config.keyboard_layout, slots, { variant: "popup" }));
+    // 最下段の左はどの配列でも空いているので、そこに小人を立たせる。
+    panel.append(kobito("kobito-popup"));
   }
   root.append(panel);
 }

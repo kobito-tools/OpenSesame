@@ -53,6 +53,8 @@ button, input, select { font: inherit; color: inherit; }
 }
 
 .settings-header { display: flex; justify-content: space-between; gap: 22px; align-items: center; }
+.header-title { flex: 1; }
+.kobito-settings { width: 46px; margin-right: -10px; }
 .eyebrow { margin: 0 0 2px; color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .18em; }
 h1 { margin: 0; font-size: 21px; letter-spacing: -.03em; }
 .subtitle { margin: 3px 0 0; color: var(--ink-soft); font-size: 12px; }
@@ -294,8 +296,14 @@ h2 { margin: 0; font-size: 15px; }
     inset 0 0 0 1px rgba(23, 33, 58, .16),
     inset 0 0 0 2px rgba(255, 255, 255, .75);
 }
-.launcher-panel { padding: 16px; background: none; border: 0; box-shadow: none; }
-.popup-empty { padding: 22px 30px; color: var(--ink); font-size: 13px; }
+.launcher-panel { position: relative; padding: 16px; background: none; border: 0; box-shadow: none; }
+/* 最下段の左は US でも JIS でも 2 行ぶん空いている。その幅に収まる大きさにする。 */
+.kobito-popup { position: absolute; left: 34px; bottom: 16px; width: 92px; }
+.popup-empty {
+  display: flex; align-items: center; gap: 14px;
+  padding: 22px 30px; color: var(--ink); font-size: 13px;
+}
+.kobito-empty { width: 56px; flex: none; }
 .launcher-icon { display: grid; place-items: center; overflow: hidden; }
 .launcher-icon img { width: 100%; height: 100%; object-fit: contain; }
 .fallback-icon {
@@ -312,8 +320,17 @@ h2 { margin: 0; font-size: 15px; }
   from { opacity: 0; transform: translateY(16px) scale(.97); }
   to { opacity: 1; transform: none; }
 }
+/* 小人はキーが並び終わる頃に、少し跳ねて出てくる。 */
+.launcher-panel.rise .kobito-popup {
+  animation: kobito-hop .42s cubic-bezier(.34, 1.56, .64, 1) 150ms both;
+}
+@keyframes kobito-hop {
+  from { opacity: 0; transform: translateY(18px) scale(.9); }
+  to { opacity: 1; transform: none; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .launcher-panel.rise .keyboard-key { animation: none; }
+  .launcher-panel.rise .keyboard-key,
+  .launcher-panel.rise .kobito-popup { animation: none; }
 }
 
 .window-diagram {
@@ -339,6 +356,12 @@ h2 { margin: 0; font-size: 15px; }
 .window-diagram[data-action="left-two-thirds"]::after { inset: 0 33.33% 0 0; }
 .window-diagram[data-action="right-two-thirds"]::after { inset: 0 0 0 33.33%; }
 .window-diagram[data-action="maximize"]::after { inset: 0; }
+
+/* 小人（アプリアイコンと同じ図形）。飾りなので操作の邪魔をしない。 */
+.kobito { pointer-events: none; user-select: none; line-height: 0; }
+.kobito svg { display: block; width: 100%; height: auto; overflow: visible; }
+.kobito-settings svg, .kobito-empty svg { filter: drop-shadow(0 3px 5px rgba(23, 33, 58, .16)); }
+.kobito-popup svg { filter: drop-shadow(0 5px 8px rgba(23, 33, 58, .2)); }
 
 /* ---------- キーボード配列（設定画面とポップアップで共有） ---------- */
 

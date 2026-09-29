@@ -2,6 +2,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { activationLabel, isModifierCode, sortModifiers } from "./activation";
 import { APP_NAME, setLanguage, t, translateError, type Language } from "./i18n";
+import { kobito } from "./kobito";
 import {
   ASSIGNABLE_KEYS,
   buildKeyboard,
@@ -622,6 +623,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     const configPath = shell.querySelector<HTMLElement>("[data-config-path]");
     if (configPath) configPath.title = runtime.config_path;
     if (inputError) shell.querySelector("[data-permission]")?.append(permissionCard());
+    shell.querySelector(".settings-header")?.prepend(kobito("kobito-settings"));
     shell.querySelector("[data-activation-slot]")?.append(activationRecorder());
     shell.querySelector("[data-language]")?.append(
       segmented<Language>(
