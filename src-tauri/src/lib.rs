@@ -1,5 +1,6 @@
 mod icons;
 mod input;
+mod instance;
 mod keys;
 mod model;
 mod storage;
@@ -422,6 +423,8 @@ const POPUP_CORNER_RADIUS: f64 = 22.0;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 他の版と並んで動くとキーフックが二重になるので、ウィンドウを作る前に片付ける。
+    instance::take_over_or_exit();
     tauri::Builder::default()
         .setup(|app| {
             let data_dir = app

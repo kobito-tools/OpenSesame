@@ -146,8 +146,9 @@ pub fn start(
                 continue;
             }
             match install_hook(&app, machine.clone()) {
-                Ok(()) => {
+                Ok(hook) => {
                     report(&app, &input_error, None);
+                    watch_hook(&app, &input_error, hook);
                     return;
                 }
                 Err(detail) => {
@@ -159,9 +160,33 @@ pub fn start(
     });
 }
 
+/// 権限の取り消しなどでOSにタップを切られたら、権限が戻るのを待って張り直す。
+/// コールバック内で即座に張り直すと切断と再接続が延々と繰り返されるため、ここで間隔を空ける。
+#[cfg(target_os = "macos")]
+fn watch_hook(app: &AppHandle, input_error: &InputError, tap: crate::tap_macos::Tap) {
+    loop {
+        thread::sleep(RETRY_INTERVAL);
+        if !accessibility_granted() {
+            report(app, input_error, Some(error("accessibility-denied", "")));
+            continue;
+        }
+        if !tap.is_enabled() {
+            tap.enable();
+        }
+        report(app, input_error, None);
+    }
+}
+
+/// rdevのフックは自前で復帰するので見張る必要はない。
+#[cfg(not(target_os = "macos"))]
+fn watch_hook(_app: &AppHandle, _input_error: &InputError, _hook: ()) {}
+
 /// macOSのフックはメインスレッドのランループに繋ぐ必要がある。
 #[cfg(target_os = "macos")]
-fn install_hook(app: &AppHandle, machine: Arc<Mutex<Machine>>) -> Result<(), String> {
+fn install_hook(
+    app: &AppHandle,
+    machine: Arc<Mutex<Machine>>,
+) -> Result<crate::tap_macos::Tap, String> {
     let (sender, receiver) = mpsc::channel();
     app.run_on_main_thread(move || {
         let _ = sender.send(crate::tap_macos::install(machine));

@@ -2779,12 +2779,13 @@ dependencies = [
 
 [[package]]
 name = "opensesame"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "file_icon_provider",
  "image",
  "objc2",
  "objc2-app-kit",
+ "objc2-foundation",
  "open",
  "rdev",
  "rfd",

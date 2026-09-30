@@ -4,6 +4,10 @@
 //! このAPIはメインスレッド必須のため、専用スレッドで動く`grab`は最初の押下で
 //! 必ずSIGTRAPになる。表記は使わないので、CGEventTapを自前で張って回避する。
 //! 併せて、タップがOSに無効化されたときの復帰も行う。
+//!
+//! 無効化の通知を受けて即座に張り直すのはタイムアウトのときだけにする。
+//! 権限の取り消しなどで切られたときに張り直すと、すぐまた切られて通知が届き、
+//! メインスレッドが止まらなくなる。そちらは監視スレッドが間隔を空けて復帰させる。
 
 use crate::input::{Machine, Verdict};
 use std::{
@@ -30,6 +34,7 @@ extern "C" {
         user_info: *mut c_void,
     ) -> CFRef;
     fn CGEventTapEnable(tap: CFRef, enable: bool);
+    fn CGEventTapIsEnabled(tap: CFRef) -> bool;
     fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
     fn CGEventGetFlags(event: CGEventRef) -> u64;
 }
@@ -70,14 +75,16 @@ extern "C" fn callback(
     // SAFETY: install()で確保したTapContextを指し、アプリ終了まで有効。
     let context = unsafe { &*(user_info as *const TapContext) };
 
-    // 重い処理や無操作が続くとOSがタップを切るので、その場で張り直す。
-    if event_type == EVENT_TAP_DISABLED_BY_TIMEOUT
-        || event_type == EVENT_TAP_DISABLED_BY_USER_INPUT
-    {
+    // コールバックが遅れてOSにタップを切られたときは、その場で張り直す。
+    if event_type == EVENT_TAP_DISABLED_BY_TIMEOUT {
         let tap = *context.tap.borrow();
         if !tap.is_null() {
             unsafe { CGEventTapEnable(tap, true) };
         }
+        return event;
+    }
+    // それ以外の理由で切られたときはここでは触らず、監視スレッドに任せる。
+    if event_type == EVENT_TAP_DISABLED_BY_USER_INPUT {
         return event;
     }
 
@@ -118,8 +125,25 @@ fn with_machine(context: &TapContext, action: impl FnOnce(&mut Machine) -> Verdi
     }
 }
 
+/// 張ったタップ。監視スレッドから状態の確認と張り直しに使う。
+#[derive(Clone, Copy)]
+pub struct Tap(CFRef);
+
+// SAFETY: タップはアプリ終了まで解放せず、CGEventTapEnable/IsEnabledはスレッドを問わない。
+unsafe impl Send for Tap {}
+
+impl Tap {
+    pub fn is_enabled(self) -> bool {
+        unsafe { CGEventTapIsEnabled(self.0) }
+    }
+
+    pub fn enable(self) {
+        unsafe { CGEventTapEnable(self.0, true) };
+    }
+}
+
 /// メインスレッドで呼ぶこと。成功すると以降のキーイベントがコールバックへ届く。
-pub fn install(machine: Arc<Mutex<Machine>>) -> Result<(), String> {
+pub fn install(machine: Arc<Mutex<Machine>>) -> Result<Tap, String> {
     let context = Box::into_raw(Box::new(TapContext {
         machine,
         tap: RefCell::new(ptr::null()),
@@ -159,5 +183,5 @@ pub fn install(machine: Arc<Mutex<Machine>>) -> Result<(), String> {
         CGEventTapEnable(tap, true);
         CFRelease(source);
     }
-    Ok(())
+    Ok(Tap(tap))
 }
