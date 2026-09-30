@@ -44,7 +44,7 @@ const ja = {
   "layout.keyboard-us": "英字配列",
 
   "pane.keyboard.title": "キーボード配列",
-  "pane.keyboard.desc": "キーを選ぶと下の一覧の該当行へ移動します。",
+  "pane.keyboard.desc": "キーを選ぶと下の一覧の該当行へ移動します。登録済みのキーはドラッグで別のキーへ移せます。",
   "pane.list.title": "登録項目",
   "pane.list.desc": "種類別に表示しています。キーの重複は自動的に防止されます。",
 
@@ -85,6 +85,8 @@ const ja = {
   "picker.back": "戻る",
   "picker.cancel": "キャンセル",
   "status.saved": "保存しました",
+  "status.moved": "{from} の割り当てを {to} へ移動しました",
+  "status.swapped": "{from} と {to} の割り当てを入れ替えました",
   "status.unregistered": "{key} は未登録です。下の一覧からキーを割り当てられます。",
   "footer.configPath": "設定はOSのユーザーデータ領域に保存されます",
   "popup.empty": "起動キー + . でアプリやウィンドウ操作を登録",
@@ -154,7 +156,7 @@ const en: Record<MessageKey, string> = {
   "layout.keyboard-us": "ANSI",
 
   "pane.keyboard.title": "Keyboard layout",
-  "pane.keyboard.desc": "Pick a key to jump to its row in the list below.",
+  "pane.keyboard.desc": "Pick a key to jump to its row in the list below. Drag an assigned key onto another key to move it.",
   "pane.list.title": "Registered items",
   "pane.list.desc": "Grouped by type. Duplicate keys are prevented automatically.",
 
@@ -195,6 +197,8 @@ const en: Record<MessageKey, string> = {
   "picker.back": "Back",
   "picker.cancel": "Cancel",
   "status.saved": "Saved",
+  "status.moved": "Moved {from} to {to}",
+  "status.swapped": "Swapped {from} and {to}",
   "status.unregistered": "{key} is unassigned. Assign it from the list below.",
   "footer.configPath": "Settings are stored in the OS user data directory",
   "popup.empty": "Press activation keys + . to register apps and window layouts",

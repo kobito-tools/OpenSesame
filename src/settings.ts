@@ -120,17 +120,20 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     }, 3600);
   };
 
-  const save = async () => {
+  /** 保存できたかどうかを返す。失敗時は保存済みの設定へ戻す。 */
+  const save = async (): Promise<boolean> => {
     try {
       config = await invoke<LauncherConfig>("save_config", { config });
       setLanguage(config.language);
       paint();
       showStatus(t("status.saved"));
+      return true;
     } catch (error) {
       config = await invoke<LauncherConfig>("get_config");
       setLanguage(config.language);
       paint();
       showStatus(translateError(error), "error");
+      return false;
     }
   };
 
@@ -391,6 +394,27 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     if (!revealRow(code)) openPicker(code);
   };
 
+  /**
+   * キーボード上のドラッグで割り当てを別のキーへ移す。
+   * 移動先に既に割り当てがあれば、2つのキーの割り当てを入れ替える。
+   */
+  const moveKey = (from: string, to: string) => {
+    const owners = (key: string) => [
+      ...config.items.filter((item) => item.key === key),
+      ...config.window_actions.filter((binding) => binding.key === key),
+    ];
+    const moving = owners(from);
+    if (moving.length === 0) return;
+    const displaced = owners(to);
+    for (const owner of moving) owner.key = to;
+    for (const owner of displaced) owner.key = from;
+    void save().then((saved) => {
+      if (!saved) return;
+      const params = { from: displayKey(from), to: displayKey(to) };
+      showStatus(t(displaced.length > 0 ? "status.swapped" : "status.moved", params));
+    });
+  };
+
   const keyboardPreview = (): HTMLElement => {
     const slots = new Map<string, KeyboardSlot>();
     for (const binding of config.window_actions) {
@@ -404,6 +428,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     return buildKeyboard(config.keyboard_layout, slots, {
       variant: "settings",
       onSelect: onKeyboardSelect,
+      onMove: moveKey,
     });
   };
 

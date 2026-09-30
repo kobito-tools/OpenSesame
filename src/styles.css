@@ -406,6 +406,22 @@ button.keyboard-key { cursor: pointer; }
   background: rgba(255, 255, 255, .92); transform: translateY(-2px);
 }
 .keyboard-key { overflow: hidden; }
+
+/* 割り当て済みのキーはつかんで別のキーへ運べる。 */
+.keyboard-settings .keyboard-key.assigned:not(.reserved) { cursor: grab; touch-action: none; }
+.keyboard-layout.dragging, .keyboard-layout.dragging .keyboard-key { cursor: grabbing; }
+.keyboard-layout.dragging .keyboard-key:hover { transform: none; }
+.keyboard-key.drag-source { opacity: .35; }
+.keyboard-key.drop-target {
+  z-index: 3; border-color: rgba(79, 70, 229, .9);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, .35), 0 3px 10px rgba(23, 33, 58, .16);
+  transform: translateY(-2px);
+}
+.drag-ghost {
+  position: fixed; top: 0; left: 0; z-index: 100; margin: 0;
+  pointer-events: none; opacity: .88;
+  box-shadow: 0 12px 28px rgba(23, 33, 58, .3);
+}
 .keyboard-key > kbd { font: 700 11px/1 inherit; color: rgba(29, 36, 51, .62); }
 
 /* 割り当て済みのキーはアイコンを全面に敷き、文字をその上に重ねる。 */

@@ -275,6 +275,81 @@ export interface KeyboardSlot {
 export interface KeyboardOptions {
   variant: "settings" | "popup";
   onSelect?: (code: string) => void;
+  /** 割り当て済みのキーを別のキーへドラッグしたときに呼ぶ。 */
+  onMove?: (from: string, to: string) => void;
+}
+
+/** これ以上動いたらクリックではなくドラッグとみなす距離(px)。 */
+const DRAG_THRESHOLD = 5;
+
+/**
+ * 割り当て済みのキーをつかんで別のキーへ運べるようにする。
+ * TauriのWebViewではHTML5のドラッグ&ドロップがファイルドロップ処理と競合するので、
+ * ポインタイベントで実装する。
+ */
+function enableKeyDrag(
+  keyboard: HTMLElement,
+  key: HTMLElement,
+  code: string,
+  onMove: (from: string, to: string) => void,
+): void {
+  key.addEventListener("pointerdown", (down) => {
+    if (down.button !== 0) return;
+    const startX = down.clientX;
+    const startY = down.clientY;
+    let ghost: HTMLElement | null = null;
+    let target: HTMLElement | null = null;
+
+    const dropTargetAt = (x: number, y: number): HTMLElement | null => {
+      const hit = document.elementFromPoint(x, y)?.closest<HTMLElement>(".keyboard-key");
+      if (!hit || !keyboard.contains(hit) || hit === key) return null;
+      if (hit.classList.contains("reserved") || !hit.dataset.code) return null;
+      return hit;
+    };
+
+    const onPointerMove = (move: PointerEvent) => {
+      if (!ghost) {
+        if (Math.hypot(move.clientX - startX, move.clientY - startY) < DRAG_THRESHOLD) return;
+        const rect = key.getBoundingClientRect();
+        ghost = key.cloneNode(true) as HTMLElement;
+        ghost.classList.add("drag-ghost");
+        ghost.style.width = `${rect.width}px`;
+        ghost.style.height = `${rect.height}px`;
+        document.body.append(ghost);
+        key.classList.add("drag-source");
+        keyboard.classList.add("dragging");
+      }
+      ghost.style.transform = `translate(${move.clientX - ghost.offsetWidth / 2}px, ${move.clientY - ghost.offsetHeight / 2}px)`;
+      const next = dropTargetAt(move.clientX, move.clientY);
+      if (next !== target) {
+        target?.classList.remove("drop-target");
+        next?.classList.add("drop-target");
+        target = next;
+      }
+    };
+
+    const finish = (commit: boolean) => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+      if (!ghost) return;
+      ghost.remove();
+      key.classList.remove("drag-source");
+      keyboard.classList.remove("dragging");
+      target?.classList.remove("drop-target");
+      // ドラッグ直後に同じキー上で発生するクリックで一覧へ移動しないよう、少しの間だけ印を付ける。
+      key.dataset.dragged = "";
+      window.setTimeout(() => delete key.dataset.dragged, 0);
+      const to = target?.dataset.code;
+      if (commit && to && to !== code) onMove(code, to);
+    };
+    const onPointerUp = () => finish(true);
+    const onPointerCancel = () => finish(false);
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
+  });
 }
 
 /** 設定画面とポップアップで共有するキーボード配列の描画。 */
@@ -328,7 +403,13 @@ export function buildKeyboard(
       }
       if (options.onSelect && !cap.reserved) {
         const code = cap.code;
-        key.addEventListener("click", () => options.onSelect?.(code));
+        key.addEventListener("click", () => {
+          if (key.dataset.dragged !== undefined) return;
+          options.onSelect?.(code);
+        });
+      }
+      if (slot && options.onMove && !cap.reserved) {
+        enableKeyDrag(keyboard, key, cap.code, options.onMove);
       }
       keyboard.append(key);
     }
