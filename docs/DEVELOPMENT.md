@@ -26,6 +26,7 @@ OpenSesame! の中身の構造、ビルド方法、配布手順をまとめて�
 │   ├── src/
 │   │   ├── lib.rs             # コマンド定義、起動処理、トレイ
 │   │   ├── input.rs           # キー入力の状態遷移（OS非依存）と、Windowsのフック
+│   │   ├── instance.rs        # 二重起動の防止（新しい版を残し、旧版を終了させる）
 │   │   ├── tap_macos.rs       # macOSのキーフック（CGEventTap）
 │   │   ├── keys.rs            # 物理キーの正規名と対応表
 │   │   ├── window_layout.rs   # 前面ウィンドウの整形
