@@ -1,8 +1,8 @@
 use crate::{
     keys::normalize_modifier,
     model::{
-        default_keyboard_layout, ActivationConfig, LauncherConfig, CONFIG_VERSION,
-        KEYBOARD_LAYOUTS,
+        default_keyboard_layout, default_window_actions, ActivationConfig, LauncherConfig,
+        CONFIG_VERSION, KEYBOARD_LAYOUTS,
     },
 };
 use serde_json::{Map, Value};
@@ -43,6 +43,7 @@ fn load(path: &Path) -> Result<LauncherConfig, String> {
     }
     let mut config: LauncherConfig = serde_json::from_value(raw)
         .map_err(|error| format!("設定ファイルが不正です: {error}"))?;
+    fill_window_actions(&mut config);
     if migrated {
         config.version = CONFIG_VERSION;
         save(path, &config)?;
@@ -114,6 +115,21 @@ fn migrate_keyboard_layout(object: &mut Map<String, Value>) {
         popup.remove("layout");
         popup.remove("show_labels");
     }
+}
+
+/// 新しい版で増えたウィンドウ整形を、既存の割り当てを保ったまま組み込みの順に並べ直す。
+/// 増えるたびに設定の版を上げずに済むよう、読み込みのたびに行う。
+fn fill_window_actions(config: &mut LauncherConfig) {
+    let mut saved = std::mem::take(&mut config.window_actions);
+    for default in default_window_actions() {
+        let binding = match saved.iter().position(|binding| binding.action == default.action) {
+            Some(index) => saved.remove(index),
+            None => default,
+        };
+        config.window_actions.push(binding);
+    }
+    // 組み込みに無い操作は捨てずに末尾へ残す。
+    config.window_actions.append(&mut saved);
 }
 
 pub fn save(path: &Path, config: &LauncherConfig) -> Result<(), String> {
@@ -219,5 +235,30 @@ mod tests {
         migrate(&mut raw);
         let config: LauncherConfig = serde_json::from_value(raw).unwrap();
         assert_eq!(config.keyboard_layout, default_keyboard_layout());
+    }
+    #[test]
+    fn adds_new_window_actions_and_keeps_existing_keys() {
+        use crate::model::WindowActionBinding;
+        let mut config = LauncherConfig::default();
+        config.window_actions = vec![
+            WindowActionBinding {
+                action: "maximize".into(),
+                name: "全画面表示".into(),
+                key: Some("KeyM".into()),
+            },
+            WindowActionBinding {
+                action: "legacy".into(),
+                name: "旧操作".into(),
+                key: None,
+            },
+        ];
+        fill_window_actions(&mut config);
+        let actions: Vec<&str> = config.window_actions.iter().map(|b| b.action.as_str()).collect();
+        let defaults = default_window_actions();
+        assert_eq!(actions.len(), defaults.len() + 1);
+        assert!(actions.contains(&"top-left-quarter") && actions.contains(&"center"));
+        assert_eq!(actions.last(), Some(&"legacy"));
+        let maximize = config.window_actions.iter().find(|b| b.action == "maximize").unwrap();
+        assert_eq!(maximize.key.as_deref(), Some("KeyM"));
     }
 }
