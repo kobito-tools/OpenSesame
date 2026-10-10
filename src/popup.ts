@@ -1,12 +1,12 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { setLanguage, t } from "./i18n";
-import { buildKeyboard, type KeyboardSlot } from "./keys";
+import { buildKeyboard, fallbackGlyph, type KeyboardSlot } from "./keys";
 import { kobito } from "./kobito";
-import type { LauncherConfig, WindowActionBinding } from "./types";
+import type { LauncherConfig, LauncherItem, WindowActionBinding } from "./types";
 
 type DisplayEntry = {
-  kind: "application" | "folder" | "window";
+  kind: LauncherItem["type"] | "window";
   name: string;
   key: string;
   iconPath?: string;
@@ -57,7 +57,7 @@ function visual(entry: DisplayEntry): HTMLElement {
     icon.append(diagram);
   } else {
     icon.classList.add("fallback-icon");
-    icon.textContent = entry.kind === "folder" ? "📁" : entry.name.slice(0, 1).toUpperCase();
+    icon.textContent = fallbackGlyph(entry.kind, entry.name);
   }
   return icon;
 }

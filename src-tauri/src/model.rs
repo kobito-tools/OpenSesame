@@ -55,6 +55,7 @@ pub struct WindowActionBinding {
 pub enum TargetType {
     Application,
     Folder,
+    Website,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

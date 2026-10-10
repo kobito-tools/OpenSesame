@@ -27,11 +27,12 @@ export interface TargetIcon {
 
 export interface LauncherItem {
   id: string;
-  type: "application" | "folder";
+  type: "application" | "folder" | "website";
   name: string;
   key: string;
   target: {
-    kind: "path";
+    /** Webサイトは "url"、それ以外はファイルシステム上の "path"。 */
+    kind: "path" | "url";
     value: string;
   };
   icon: TargetIcon;

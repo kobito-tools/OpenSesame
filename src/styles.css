@@ -272,7 +272,14 @@ h2 { margin: 0; font-size: 15px; }
 }
 .picker-action:hover { border-color: rgba(79, 70, 229, .45); background: white; }
 .picker-action .table-icon { width: 28px; height: 28px; flex: 0 0 28px; }
-.picker-footer { display: flex; justify-content: flex-end; }
+.picker-footer { display: flex; justify-content: flex-end; gap: 8px; }
+.picker-form { display: grid; gap: 10px; }
+.picker-field { display: grid; gap: 4px; font-size: 11px; color: var(--ink-soft); }
+.picker-field input {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px;
+  background: var(--surface-strong); font-size: 13px; color: var(--ink); outline: 0;
+}
+.picker-field input:focus { border-color: rgba(79, 70, 229, .55); box-shadow: 0 0 0 3px var(--accent-soft); }
 
 /* ---------- ポップアップ ---------- */
 
