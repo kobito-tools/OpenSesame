@@ -136,11 +136,16 @@ pub fn default_window_actions() -> Vec<WindowActionBinding> {
         ("right-half", "画面右半分"),
         ("top-half", "画面上半分"),
         ("bottom-half", "画面下半分"),
+        ("top-left-quarter", "画面左上4分の1"),
+        ("top-right-quarter", "画面右上4分の1"),
+        ("bottom-left-quarter", "画面左下4分の1"),
+        ("bottom-right-quarter", "画面右下4分の1"),
         ("left-third", "画面左3分の1"),
         ("center-third", "画面中央3分の1"),
         ("right-third", "画面右3分の1"),
         ("left-two-thirds", "画面左3分の2"),
         ("right-two-thirds", "画面右3分の2"),
+        ("center", "画面中央"),
         ("maximize", "全画面表示"),
     ]
     .into_iter()

@@ -8,6 +8,22 @@ struct Rect {
     height: i32,
 }
 
+/// 大きさを変えずに画面中央へ寄せる操作。現在のウィンドウの大きさが要るので、
+/// 画面の領域だけで決まる `layout_rect` とは別に扱う。
+const CENTER: &str = "center";
+
+/// 画面より大きいウィンドウは、はみ出さないよう左上を作業領域の角に合わせる。
+/// macOSは同じ計算をAppleScript側で行うので、Windowsとテストだけが使う。
+#[cfg_attr(not(windows), allow(dead_code))]
+fn centered(width: i32, height: i32, area: Rect) -> Rect {
+    Rect {
+        x: area.x + ((area.width - width) / 2).max(0),
+        y: area.y + ((area.height - height) / 2).max(0),
+        width,
+        height,
+    }
+}
+
 fn layout_rect(action: &str, area: Rect) -> Result<Rect, String> {
     let half_width = area.width / 2;
     let half_height = area.height / 2;
@@ -32,6 +48,29 @@ fn layout_rect(action: &str, area: Rect) -> Result<Rect, String> {
             y: area.y + half_height,
             height: area.height - half_height,
             ..area
+        },
+        "top-left-quarter" => Rect {
+            width: half_width,
+            height: half_height,
+            ..area
+        },
+        "top-right-quarter" => Rect {
+            x: area.x + half_width,
+            width: area.width - half_width,
+            height: half_height,
+            ..area
+        },
+        "bottom-left-quarter" => Rect {
+            y: area.y + half_height,
+            width: half_width,
+            height: area.height - half_height,
+            ..area
+        },
+        "bottom-right-quarter" => Rect {
+            x: area.x + half_width,
+            y: area.y + half_height,
+            width: area.width - half_width,
+            height: area.height - half_height,
         },
         "left-third" => Rect {
             width: third,
@@ -67,7 +106,7 @@ pub fn apply(app: &AppHandle, action: &str) -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 mod platform {
-    use super::{layout_rect, Rect};
+    use super::{layout_rect, Rect, CENTER};
     use std::{process::Command, sync::mpsc, time::Duration};
     use tauri::AppHandle;
 
@@ -76,11 +115,15 @@ mod platform {
     /// 時間のかかるosascriptは呼び出し元のスレッドで動かす。
     pub fn apply(app: &AppHandle, action: &str) -> Result<(), String> {
         let area = monitor_area(app)?;
-        let target = layout_rect(action, area)?;
-        let script = format!(
-            "tell application \"System Events\" to tell first application process whose frontmost is true to tell front window to set {{position, size}} to {{{{{}, {}}}, {{{}, {}}}}}",
-            target.x, target.y, target.width, target.height
-        );
+        let script = if action == CENTER {
+            center_script(area)
+        } else {
+            let target = layout_rect(action, area)?;
+            format!(
+                "tell application \"System Events\" to tell first application process whose frontmost is true to tell front window to set {{position, size}} to {{{{{}, {}}}, {{{}, {}}}}}",
+                target.x, target.y, target.width, target.height
+            )
+        };
         let output = Command::new("/usr/bin/osascript")
             .args(["-e", &script])
             .output()
@@ -90,6 +133,29 @@ mod platform {
         } else {
             Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
         }
+    }
+
+    /// 大きさの取得と移動を1回のosascriptで済ませ、待ち時間を増やさない。
+    /// 計算は `super::centered` と同じ。
+    fn center_script(area: Rect) -> String {
+        format!(
+            "tell application \"System Events\"
+                tell first application process whose frontmost is true
+                    tell front window
+                        set {{w, h}} to size
+                        set x to {x} + ({width} - w) div 2
+                        if x < {x} then set x to {x}
+                        set y to {y} + ({height} - h) div 2
+                        if y < {y} then set y to {y}
+                        set position to {{x, y}}
+                    end tell
+                end tell
+            end tell",
+            x = area.x,
+            y = area.y,
+            width = area.width,
+            height = area.height
+        )
     }
 
     fn monitor_area(app: &AppHandle) -> Result<Rect, String> {
@@ -127,7 +193,7 @@ mod platform {
 
 #[cfg(windows)]
 mod platform {
-    use super::{layout_rect, Rect};
+    use super::{centered, layout_rect, Rect, CENTER};
     use std::mem::size_of;
     use tauri::AppHandle;
     use windows_sys::Win32::{
@@ -135,7 +201,8 @@ mod platform {
             GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
         },
         UI::WindowsAndMessaging::{
-            GetForegroundWindow, SetWindowPos, ShowWindow, SWP_NOACTIVATE, SWP_NOZORDER, SW_RESTORE,
+            GetForegroundWindow, GetWindowRect, SetWindowPos, ShowWindow, SWP_NOACTIVATE,
+            SWP_NOZORDER, SW_RESTORE,
         },
     };
 
@@ -156,16 +223,23 @@ mod platform {
                 return Err("ディスプレイの作業領域を取得できません".into());
             }
             let work = info.rcWork;
-            let target = layout_rect(
-                action,
-                Rect {
-                    x: work.left,
-                    y: work.top,
-                    width: work.right - work.left,
-                    height: work.bottom - work.top,
-                },
-            )?;
+            let area = Rect {
+                x: work.left,
+                y: work.top,
+                width: work.right - work.left,
+                height: work.bottom - work.top,
+            };
+            // 最大化中は元の大きさに戻してから測る。
             ShowWindow(window, SW_RESTORE);
+            let target = if action == CENTER {
+                let mut frame = Default::default();
+                if GetWindowRect(window, &mut frame) == 0 {
+                    return Err("ウィンドウの大きさを取得できません".into());
+                }
+                centered(frame.right - frame.left, frame.bottom - frame.top, area)
+            } else {
+                layout_rect(action, area)?
+            };
             if SetWindowPos(
                 window,
                 std::ptr::null_mut(),
@@ -215,5 +289,27 @@ mod tests {
         assert_eq!(layout_rect("right-half", SCREEN).unwrap().x, 600);
         assert_eq!(layout_rect("bottom-half", SCREEN).unwrap().y, 475);
         assert_eq!(layout_rect("maximize", SCREEN).unwrap(), SCREEN);
+    }
+
+    #[test]
+    fn quarters_tile_the_screen() {
+        let top_left = layout_rect("top-left-quarter", SCREEN).unwrap();
+        let bottom_right = layout_rect("bottom-right-quarter", SCREEN).unwrap();
+        assert_eq!((top_left.x, top_left.y, top_left.width, top_left.height), (0, 25, 600, 450));
+        assert_eq!((bottom_right.x, bottom_right.y), (600, 475));
+        assert_eq!(bottom_right.x + bottom_right.width, 1200);
+        assert_eq!(bottom_right.y + bottom_right.height, 925);
+        assert_eq!(layout_rect("top-right-quarter", SCREEN).unwrap().y, 25);
+        assert_eq!(layout_rect("bottom-left-quarter", SCREEN).unwrap().x, 0);
+    }
+
+    #[test]
+    fn centering_keeps_the_size_and_stays_on_screen() {
+        assert_eq!(
+            centered(600, 400, SCREEN),
+            Rect { x: 300, y: 275, width: 600, height: 400 }
+        );
+        let oversized = centered(1600, 1000, SCREEN);
+        assert_eq!((oversized.x, oversized.y), (0, 25));
     }
 }

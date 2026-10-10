@@ -357,11 +357,16 @@ h2 { margin: 0; font-size: 15px; }
 .window-diagram[data-action="right-half"]::after { inset: 0 0 0 50%; }
 .window-diagram[data-action="top-half"]::after { inset: 0 0 50% 0; }
 .window-diagram[data-action="bottom-half"]::after { inset: 50% 0 0 0; }
+.window-diagram[data-action="top-left-quarter"]::after { inset: 0 50% 50% 0; }
+.window-diagram[data-action="top-right-quarter"]::after { inset: 0 0 50% 50%; }
+.window-diagram[data-action="bottom-left-quarter"]::after { inset: 50% 50% 0 0; }
+.window-diagram[data-action="bottom-right-quarter"]::after { inset: 50% 0 0 50%; }
 .window-diagram[data-action="left-third"]::after { inset: 0 66.66% 0 0; }
 .window-diagram[data-action="center-third"]::after { inset: 0 33.33%; }
 .window-diagram[data-action="right-third"]::after { inset: 0 0 0 66.66%; }
 .window-diagram[data-action="left-two-thirds"]::after { inset: 0 33.33% 0 0; }
 .window-diagram[data-action="right-two-thirds"]::after { inset: 0 0 0 33.33%; }
+.window-diagram[data-action="center"]::after { inset: 25%; }
 .window-diagram[data-action="maximize"]::after { inset: 0; }
 
 /* 小人（アプリアイコンと同じ図形）。飾りなので操作の邪魔をしない。 */
