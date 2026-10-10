@@ -655,6 +655,20 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     return area;
   };
 
+  /** 起動キーに含めたShiftは裏盤面の切り替えに使えないので、代わりのキーを知らせる。 */
+  const layerNote = (): HTMLElement | null => {
+    const current = config.activation[platform];
+    const left = current.includes("ShiftLeft");
+    const right = current.includes("ShiftRight");
+    if (!left && !right) return null;
+    const note = document.createElement("p");
+    note.className = "activation-note";
+    note.textContent = t(
+      left && right ? "layer.unavailable" : left ? "layer.useRightShift" : "layer.useLeftShift",
+    );
+    return note;
+  };
+
   /** アクセシビリティ権限は場所が分かりにくいので、開くボタンと手順を出す。 */
   const permissionCard = (): HTMLElement => {
     const card = document.createElement("aside");
@@ -760,6 +774,8 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     if (inputError) shell.querySelector("[data-permission]")?.append(permissionCard());
     shell.querySelector(".settings-header")?.prepend(kobito("kobito-settings"));
     shell.querySelector("[data-activation-slot]")?.append(activationRecorder());
+    const note = layerNote();
+    if (note) shell.querySelector(".activation-card")?.append(note);
     shell.querySelector("[data-language]")?.append(
       segmented<Language>(
         [
