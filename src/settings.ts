@@ -314,6 +314,19 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         showStatus(translateError(error), "error");
       }
     });
+    const refetch = createButton(t("button.refetchIcon"), "button compact");
+    refetch.addEventListener("click", async () => {
+      refetch.disabled = true;
+      showStatus(t("status.fetchingIcon"));
+      try {
+        const updated = await invoke<LauncherItem>("refetch_website_icon", { itemId: item.id });
+        config.items = config.items.map((entry) => (entry.id === updated.id ? updated : entry));
+        await save();
+      } catch (error) {
+        refetch.disabled = false;
+        showStatus(translateError(error), "error");
+      }
+    });
     const remove = createButton(t("button.delete"), "button compact danger");
     remove.addEventListener("click", () => {
       config.items = config.items.filter((entry) => entry.id !== item.id);
@@ -323,6 +336,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     rowActions.className = "row-actions";
     if (offLayout(item.key)) rowActions.append(offLayoutBadge());
     if (item.type === "application") rowActions.append(hideToggle(item));
+    if (item.type === "website") rowActions.append(refetch);
     rowActions.append(iconButton, remove);
     row.append(detail, select, rowActions);
     return row;
@@ -474,10 +488,16 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         event.preventDefault();
         const url = urlInput.value.trim();
         if (!url) return;
+        // アイコンを取りに行く数秒のあいだ、押せたかどうか分かるようにする。
         submit.disabled = true;
+        submit.textContent = t("status.fetchingIcon");
         const added = await addWebsite(url, nameInput.value.trim(), code);
-        if (added) closePicker();
-        else submit.disabled = false;
+        if (added) {
+          closePicker();
+        } else {
+          submit.disabled = false;
+          submit.textContent = t("picker.websiteAdd");
+        }
       });
       card.append(title, form);
       urlInput.focus();
