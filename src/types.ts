@@ -36,6 +36,8 @@ export interface LauncherItem {
     value: string;
   };
   icon: TargetIcon;
+  /** アプリが既に前面にあるときは、開く代わりに隠す。 */
+  hide_when_frontmost?: boolean;
 }
 
 export interface LauncherConfig {

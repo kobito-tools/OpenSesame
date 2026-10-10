@@ -74,6 +74,8 @@ const ja = {
   "key.group.specials": "特殊キー",
 
   "item.windowHint": "現在のウィンドウを整形",
+  "item.hideWhenFrontmost": "前面なら隠す",
+  "item.hideWhenFrontmostHint": "このアプリが前面にあるときにもう一度押すと隠します（Windowsでは最小化）",
 
   "picker.title": "{key} キーに割り当てる",
   "picker.lead": "このキーはまだ空いています。割り当てる種類を選んでください。",
@@ -201,6 +203,8 @@ const en: Record<MessageKey, string> = {
   "key.group.specials": "Special keys",
 
   "item.windowHint": "Resize the frontmost window",
+  "item.hideWhenFrontmost": "Hide if in front",
+  "item.hideWhenFrontmostHint": "Press again while this app is in front to hide it (minimize on Windows)",
 
   "picker.title": "Assign the {key} key",
   "picker.lead": "This key is free. Choose what to assign to it.",
