@@ -168,6 +168,7 @@ h2 { margin: 0; font-size: 15px; }
 .items-table { flex: 1; min-height: 0; padding: 6px 8px 12px; overflow-y: auto; }
 
 .button-row, .row-actions { display: flex; align-items: center; gap: 8px; }
+.activation-note { margin: 0; color: #92610a; font-size: 11px; }
 .hide-toggle {
   display: flex; align-items: center; gap: 5px; white-space: nowrap;
   color: var(--ink-soft); font-size: 11px; cursor: pointer;

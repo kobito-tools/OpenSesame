@@ -347,6 +347,10 @@ fn validate_activation(values: &[String]) -> Result<(), String> {
             return Err(error("activation-duplicate", normalized));
         }
     }
+    // Shiftだけだと大文字を打つたびにポップアップが出て、割り当てたキーを奪ってしまう。
+    if seen.iter().all(|key| key.starts_with("Shift")) {
+        return Err(error("activation-shift-only", ""));
+    }
     Ok(())
 }
 
@@ -744,5 +748,16 @@ mod tests {
             validate_config(&edited, &saved).unwrap_err(),
             "applauncher-error:duplicate-key:Shift+KeyA"
         );
+    }
+    #[test]
+    fn activation_must_not_be_shift_only() {
+        let mut config = LauncherConfig::default();
+        config.activation.macos = vec!["ShiftLeft".into(), "ShiftRight".into()];
+        assert_eq!(
+            validate_config(&config, &LauncherConfig::default()).unwrap_err(),
+            "applauncher-error:activation-shift-only"
+        );
+        config.activation.macos = vec!["ShiftLeft".into(), "ControlLeft".into()];
+        assert!(validate_config(&config, &LauncherConfig::default()).is_ok());
     }
 }
