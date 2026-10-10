@@ -11,7 +11,7 @@ const ERROR_PREFIX = "applauncher-error:";
 const ja = {
   "app.eyebrow": "OPEN SESAME",
   "app.title": "ショートカット設定",
-  "app.subtitle": "起動キーを押したまま、登録したキーを入力します。設定画面は 起動キー + . で開きます。",
+  "app.subtitle": "起動キーを押したまま、登録したキーを入力します。Shiftも押すと裏盤面に切り替わります。設定画面は 起動キー + . で開きます。",
 
   "language.name": "言語",
   "language.ja": "日本語",
@@ -44,6 +44,9 @@ const ja = {
   "layout.keyboard-us": "英字配列",
 
   "pane.keyboard.title": "キーボード配列",
+  "layer.front": "表盤面",
+  "layer.back": "裏盤面（Shift）",
+  "layer.backBadge": "⇧ 裏盤面",
   "pane.keyboard.desc": "キーを選ぶと下の一覧の該当行へ移動します。登録済みのキーはドラッグで別のキーへ移せます。",
   "pane.list.title": "登録項目",
   "pane.list.desc": "種類別に表示しています。キーの重複は自動的に防止されます。",
@@ -140,7 +143,7 @@ export type MessageKey = keyof typeof ja;
 const en: Record<MessageKey, string> = {
   "app.eyebrow": "OPEN SESAME",
   "app.title": "Shortcut settings",
-  "app.subtitle": "Hold the activation keys and press a registered key. Activation keys + . opens this window.",
+  "app.subtitle": "Hold the activation keys and press a registered key. Add Shift to switch to the Shift layer. Activation keys + . opens this window.",
 
   "language.name": "Language",
   "language.ja": "日本語",
@@ -173,6 +176,9 @@ const en: Record<MessageKey, string> = {
   "layout.keyboard-us": "ANSI",
 
   "pane.keyboard.title": "Keyboard layout",
+  "layer.front": "Main",
+  "layer.back": "Shift layer",
+  "layer.backBadge": "⇧ Shift layer",
   "pane.keyboard.desc": "Pick a key to jump to its row in the list below. Drag an assigned key onto another key to move it.",
   "pane.list.title": "Registered items",
   "pane.list.desc": "Grouped by type. Duplicate keys are prevented automatically.",

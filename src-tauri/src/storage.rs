@@ -245,11 +245,13 @@ mod tests {
                 action: "maximize".into(),
                 name: "全画面表示".into(),
                 key: Some("KeyM".into()),
+                shift: false,
             },
             WindowActionBinding {
                 action: "legacy".into(),
                 name: "旧操作".into(),
                 key: None,
+                shift: false,
             },
         ];
         fill_window_actions(&mut config);

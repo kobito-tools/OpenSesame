@@ -107,6 +107,10 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
   let inputError: string | null = runtime.input_error ?? null;
   setLanguage(config.language);
 
+  /** 表示中の盤面。真なら裏盤面（Shift）で、キーボード図も一覧もこちらに揃える。 */
+  let back = false;
+  const onLayer = (entry: { shift?: boolean }) => (entry.shift ?? false) === back;
+
   /** 起動キー録音の状態。ホバー中に delete を押すと開始する。 */
   const recorder = { recording: false, pending: new Set<string>() };
 
@@ -143,6 +147,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       const item = await invoke<LauncherItem | null>("select_target", {
         targetType: type,
         key: key ?? null,
+        shift: back,
       });
       if (!item) return;
       config.items.push(item);
@@ -159,6 +164,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         url,
         name: name || null,
         key: key ?? null,
+        shift: back,
       });
       config.items.push(item);
       return await save();
@@ -167,10 +173,13 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       return false;
     }
   };
+
   const occupiedByOther = (ownerId: string, key: string) => {
-    const itemUses = config.items.some((item) => item.id !== ownerId && item.key === key);
+    const itemUses = config.items.some(
+      (item) => item.id !== ownerId && onLayer(item) && item.key === key,
+    );
     const actionUses = config.window_actions.some(
-      (item) => `window-${item.action}` !== ownerId && item.key === key,
+      (item) => `window-${item.action}` !== ownerId && onLayer(item) && item.key === key,
     );
     return itemUses || actionUses;
   };
@@ -242,6 +251,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     detail.append(name, hint);
     const select = keySelect(`window-${binding.action}`, binding.key, true, (key) => {
       binding.key = key;
+      binding.shift = Boolean(key) && back;
       void save();
     });
     const badge = document.createElement("span");
@@ -410,17 +420,20 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         choice.append(windowIcon(binding.action), name);
         choice.addEventListener("click", () => {
           // 同じ操作が別のキーに付いていたら、こちらへ付け替える。
-          if (code) binding.key = code;
+          if (code) {
+            binding.key = code;
+            binding.shift = back;
+          }
           closePicker();
           void save();
         });
         list.append(choice);
       }
-      const back = createButton(t("picker.back"), "button compact");
-      back.addEventListener("click", paintChoices);
+      const backButton = createButton(t("picker.back"), "button compact");
+      backButton.addEventListener("click", paintChoices);
       const footer = document.createElement("div");
       footer.className = "picker-footer";
-      footer.append(back);
+      footer.append(backButton);
       card.append(title, list, footer);
     };
 
@@ -486,8 +499,8 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
    */
   const moveKey = (from: string, to: string) => {
     const owners = (key: string) => [
-      ...config.items.filter((item) => item.key === key),
-      ...config.window_actions.filter((binding) => binding.key === key),
+      ...config.items.filter((item) => onLayer(item) && item.key === key),
+      ...config.window_actions.filter((binding) => onLayer(binding) && binding.key === key),
     ];
     const moving = owners(from);
     if (moving.length === 0) return;
@@ -504,25 +517,30 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
   const keyboardPreview = (): HTMLElement => {
     const slots = new Map<string, KeyboardSlot>();
     for (const binding of config.window_actions) {
-      if (binding.key) {
+      if (binding.key && onLayer(binding)) {
         slots.set(binding.key, { name: actionName(binding), node: () => windowIcon(binding.action) });
       }
     }
-    for (const item of config.items) {
+    for (const item of config.items.filter(onLayer)) {
       slots.set(item.key, { name: item.name, node: () => targetIcon(item) });
     }
-    return buildKeyboard(config.keyboard_layout, slots, {
+    const keyboard = buildKeyboard(config.keyboard_layout, slots, {
       variant: "settings",
       onSelect: onKeyboardSelect,
       onMove: moveKey,
     });
+    keyboard.classList.toggle("keyboard-back", back);
+    return keyboard;
   };
 
   const paintItems = (container: HTMLElement) => {
     const order = (key: string | undefined) =>
       key ? ASSIGNABLE_KEYS.indexOf(key) : Number.MAX_SAFE_INTEGER;
-    const sortedItems = [...config.items].sort((a, b) => order(a.key) - order(b.key));
-    const sortedWindows = [...config.window_actions].sort((a, b) => order(a.key) - order(b.key));
+    const sortedItems = config.items.filter(onLayer).sort((a, b) => order(a.key) - order(b.key));
+    // 未割り当ての操作はどちらの盤面にも出し、反対の盤面で使っている操作だけを隠す。
+    const sortedWindows = config.window_actions
+      .filter((binding) => !binding.key || onLayer(binding))
+      .sort((a, b) => order(a.key) - order(b.key));
     const apps = sortedItems.filter((item) => item.type === "application");
     const folders = sortedItems.filter((item) => item.type === "folder");
     const websites = sortedItems.filter((item) => item.type === "website");
@@ -721,6 +739,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         <div class="split-pane keyboard-pane">
           <div class="pane-heading">
             <div><h2>${t("pane.keyboard.title")}</h2><p>${t("pane.keyboard.desc")}</p></div>
+            <div data-layer></div>
           </div>
           <div class="keyboard-scroll" data-keyboard></div>
         </div>
@@ -761,6 +780,21 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         (value) => {
           config.keyboard_layout = value;
           void save();
+        },
+      ),
+    );
+
+    shell.querySelector("[data-layer]")?.append(
+      segmented<"front" | "back">(
+        [
+          ["front", t("layer.front")],
+          ["back", t("layer.back")],
+        ],
+        back ? "back" : "front",
+        (value) => {
+          back = value === "back";
+          closePicker();
+          paint();
         },
       ),
     );

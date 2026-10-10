@@ -40,7 +40,11 @@ pub enum Verdict {
 enum PopupCommand {
     Show,
     Hide,
+    /// 真なら裏盤面（Shift）を出す。
+    Layer(bool),
 }
+
+const SHIFT_KEYS: [&str; 2] = ["ShiftLeft", "ShiftRight"];
 
 /// プラットフォーム非依存の状態遷移。キーは設定ファイル上の正規名で扱う。
 pub struct Machine {
@@ -51,9 +55,23 @@ pub struct Machine {
     pressed: HashSet<String>,
     consumed: HashSet<String>,
     armed: bool,
+    /// ポップアップが今どちらの盤面を出しているか。
+    back: bool,
 }
 
 impl Machine {
+    fn shift_down(&self, activation: &HashSet<String>) -> bool {
+        layer_shift_down(&self.pressed, activation)
+    }
+
+    /// 盤面が変わったときだけポップアップへ知らせる。
+    fn sync_layer(&mut self, back: bool) {
+        if self.back != back {
+            self.back = back;
+            let _ = self.popup.send(PopupCommand::Layer(back));
+        }
+    }
+
     pub fn on_press(&mut self, key: &str) -> Verdict {
         let first_press = self.pressed.insert(key.to_string());
         let activation = match self.activation.read() {
@@ -63,12 +81,19 @@ impl Machine {
 
         if !self.armed && activation_is_down(&self.pressed, &activation) {
             self.armed = true;
+            // Shiftを先に押していたら、最初から裏盤面で出す。
+            let back = self.shift_down(&activation);
+            self.sync_layer(back);
             let _ = self.popup.send(PopupCommand::Show);
+        } else if self.armed {
+            let back = self.shift_down(&activation);
+            self.sync_layer(back);
         }
 
-        if !self.armed || activation.contains(key) {
+        if !self.armed || activation.contains(key) || SHIFT_KEYS.contains(&key) {
             return Verdict::Pass;
         }
+        let back = self.back;
 
         if key == RESERVED_KEY {
             self.consumed.insert(key.to_string());
@@ -80,7 +105,7 @@ impl Machine {
             return Verdict::Swallow;
         }
 
-        if let Some(action) = find_window_action(&self.config, key) {
+        if let Some(action) = find_window_action(&self.config, key, back) {
             self.consumed.insert(key.to_string());
             if first_press {
                 let app = self.app.clone();
@@ -91,7 +116,7 @@ impl Machine {
             return Verdict::Swallow;
         }
 
-        if let Some(item) = find_item(&self.config, key) {
+        if let Some(item) = find_item(&self.config, key, back) {
             self.consumed.insert(key.to_string());
             if first_press {
                 launch(self.app.clone(), item);
@@ -112,6 +137,11 @@ impl Machine {
         if self.armed && !activation_is_down(&self.pressed, &activation) {
             self.armed = false;
             let _ = self.popup.send(PopupCommand::Hide);
+            // 次に開いたときは表盤面から始める。
+            self.sync_layer(false);
+        } else if self.armed {
+            let back = self.shift_down(&activation);
+            self.sync_layer(back);
         }
         if swallow {
             Verdict::Swallow
@@ -136,6 +166,7 @@ pub fn start(
         pressed: HashSet::new(),
         consumed: HashSet::new(),
         armed: false,
+        back: false,
     }));
 
     thread::spawn(move || {
@@ -237,6 +268,9 @@ fn start_popup_worker(app: AppHandle) -> Sender<PopupCommand> {
             let _ = app.run_on_main_thread(move || match command {
                 PopupCommand::Show => show_popup(&handle),
                 PopupCommand::Hide => hide_popup(&handle),
+                PopupCommand::Layer(back) => {
+                    let _ = handle.emit_to("popup", "popup-layer", back);
+                }
             });
         }
     });
@@ -287,31 +321,48 @@ fn accessibility_granted() -> bool {
     true
 }
 
+/// 起動キーに含まれないShiftが押されていれば裏盤面。
+/// 起動キーに左Shiftを含めているなら、右Shiftだけが切り替えに使える。
+fn layer_shift_down(pressed: &HashSet<String>, activation: &HashSet<String>) -> bool {
+    SHIFT_KEYS
+        .iter()
+        .any(|key| pressed.contains(*key) && !activation.contains(*key))
+}
+
 fn activation_is_down(pressed: &HashSet<String>, activation: &HashSet<String>) -> bool {
     !activation.is_empty() && activation.iter().all(|key| pressed.contains(key))
 }
 
-fn find_item(config: &Arc<RwLock<LauncherConfig>>, pressed_name: &str) -> Option<LauncherItem> {
+fn find_item(
+    config: &Arc<RwLock<LauncherConfig>>,
+    pressed_name: &str,
+    shift: bool,
+) -> Option<LauncherItem> {
     config
         .read()
         .ok()?
         .items
         .iter()
-        .find(|item| key_matches(&item.key, pressed_name))
+        .find(|item| item.shift == shift && key_matches(&item.key, pressed_name))
         .cloned()
 }
 
-fn find_window_action(config: &Arc<RwLock<LauncherConfig>>, pressed_name: &str) -> Option<String> {
+fn find_window_action(
+    config: &Arc<RwLock<LauncherConfig>>,
+    pressed_name: &str,
+    shift: bool,
+) -> Option<String> {
     config
         .read()
         .ok()?
         .window_actions
         .iter()
         .find(|binding| {
-            binding
-                .key
-                .as_deref()
-                .is_some_and(|key| key_matches(key, pressed_name))
+            binding.shift == shift
+                && binding
+                    .key
+                    .as_deref()
+                    .is_some_and(|key| key_matches(key, pressed_name))
         })
         .map(|binding| binding.action.clone())
 }
@@ -381,6 +432,17 @@ mod tests {
         assert!(!activation_is_down(&pressed, &activation));
         pressed.insert("AltLeft".into());
         assert!(activation_is_down(&pressed, &activation));
+    }
+
+    #[test]
+    fn shift_in_the_activation_does_not_flip_the_board() {
+        let activation = keys(&["ControlLeft", "ShiftLeft"]);
+        let mut pressed = keys(&["ControlLeft", "ShiftLeft"]);
+        assert!(!layer_shift_down(&pressed, &activation));
+        pressed.insert("ShiftRight".into());
+        assert!(layer_shift_down(&pressed, &activation));
+        let plain = keys(&["ControlLeft", "AltLeft"]);
+        assert!(layer_shift_down(&keys(&["ControlLeft", "AltLeft", "ShiftLeft"]), &plain));
     }
 
     #[test]
