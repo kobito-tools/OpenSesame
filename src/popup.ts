@@ -13,8 +13,9 @@ type DisplayEntry = {
   action?: string;
 };
 
-function entries(config: LauncherConfig): DisplayEntry[] {
-  const targets = config.items.map(
+/** 表盤面なら偽、裏盤面（Shift）なら真の項目だけを出す。 */
+function entries(config: LauncherConfig, back: boolean): DisplayEntry[] {
+  const targets = config.items.filter((item) => (item.shift ?? false) === back).map(
     (item) =>
       ({
         kind: item.type,
@@ -24,7 +25,10 @@ function entries(config: LauncherConfig): DisplayEntry[] {
       }) satisfies DisplayEntry,
   );
   const windows = config.window_actions
-    .filter((item): item is WindowActionBinding & { key: string } => Boolean(item.key))
+    .filter(
+      (item): item is WindowActionBinding & { key: string } =>
+        Boolean(item.key) && (item.shift ?? false) === back,
+    )
     .map((item) => {
       const key = `action.${item.action}` as const;
       const translated = t(key as never);
@@ -62,13 +66,15 @@ function visual(entry: DisplayEntry): HTMLElement {
   return icon;
 }
 
-function paint(root: HTMLElement, config: LauncherConfig): void {
+function paint(root: HTMLElement, config: LauncherConfig, back: boolean): void {
   setLanguage(config.language);
   root.replaceChildren();
   const panel = document.createElement("main");
   panel.className = "launcher-panel";
-  const allEntries = entries(config);
-  if (allEntries.length === 0) {
+  panel.classList.toggle("back-side", back);
+  const allEntries = entries(config, back);
+  // 裏盤面は空でも盤面を出し、Shiftで切り替わったことが分かるようにする。
+  if (allEntries.length === 0 && !back) {
     const empty = document.createElement("div");
     empty.className = "popup-empty";
     const message = document.createElement("span");
@@ -83,6 +89,12 @@ function paint(root: HTMLElement, config: LauncherConfig): void {
       ]),
     );
     panel.append(buildKeyboard(config.keyboard_layout, slots, { variant: "popup" }));
+    if (back) {
+      const badge = document.createElement("span");
+      badge.className = "layer-badge";
+      badge.textContent = t("layer.backBadge");
+      panel.append(badge);
+    }
     // 最下段の左はどの配列でも空いているので、そこに小人を立たせる。
     panel.append(kobito("kobito-popup"));
   }
@@ -98,13 +110,30 @@ function replayEntrance(root: HTMLElement): void {
   panel.classList.add("rise");
 }
 
+/** Shiftで盤面を裏返したときは、立ち上がりより短い反転の演出にする。 */
+function replayFlip(root: HTMLElement): void {
+  const panel = root.querySelector<HTMLElement>(".launcher-panel");
+  if (!panel) return;
+  panel.classList.remove("flip");
+  void panel.offsetWidth;
+  panel.classList.add("flip");
+}
+
 export async function renderPopup(root: HTMLElement): Promise<void> {
-  const config = await invoke<LauncherConfig>("get_config");
-  paint(root, config);
+  let config = await invoke<LauncherConfig>("get_config");
+  let back = false;
+  paint(root, config, back);
   replayEntrance(root);
   await listen<LauncherConfig>("config-changed", ({ payload }) => {
-    paint(root, payload);
+    config = payload;
+    paint(root, config, back);
     replayEntrance(root);
+  });
+  await listen<boolean>("popup-layer", ({ payload }) => {
+    if (payload === back) return;
+    back = payload;
+    paint(root, config, back);
+    replayFlip(root);
   });
   await listen("popup-shown", () => replayEntrance(root));
 }

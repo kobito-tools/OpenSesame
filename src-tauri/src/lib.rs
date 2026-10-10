@@ -76,10 +76,12 @@ fn save_config(
 }
 
 /// `key` を渡すとそのキーに割り当てる。省略時は空いているキーを自動で選ぶ。
+/// `shift` が真なら裏盤面に割り当てる。
 #[tauri::command]
 async fn select_target(
     target_type: String,
     key: Option<String>,
+    shift: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<Option<LauncherItem>, String> {
     let (path, item_type) = if target_type == "folder" {
@@ -112,18 +114,20 @@ async fn select_target(
     .map(|_| icon_path.to_string_lossy().into_owned());
 
     let name = display_name(&path);
+    let shift = shift.unwrap_or(false);
     let key = match key {
         Some(requested) => {
             validate_key(&requested)?;
             requested
         }
-        None => next_available_key(&state.config)?,
+        None => next_available_key(&state.config, shift)?,
     };
     Ok(Some(LauncherItem {
         id,
         target_type: item_type,
         name,
         key,
+        shift,
         target: TargetPath {
             kind: "path".into(),
             value: path.to_string_lossy().into_owned(),
@@ -143,6 +147,7 @@ fn create_website(
     url: String,
     name: Option<String>,
     key: Option<String>,
+    shift: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<LauncherItem, String> {
     let url = normalize_url(&url)?;
@@ -150,18 +155,20 @@ fn create_website(
         .map(|name| name.trim().to_string())
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| website_name(&url));
+    let shift = shift.unwrap_or(false);
     let key = match key {
         Some(requested) => {
             validate_key(&requested)?;
             requested
         }
-        None => next_available_key(&state.config)?,
+        None => next_available_key(&state.config, shift)?,
     };
     Ok(LauncherItem {
         id: Uuid::new_v4().to_string(),
         target_type: TargetType::Website,
         name,
         key,
+        shift,
         target: TargetPath {
             kind: "url".into(),
             value: url,
@@ -263,12 +270,20 @@ fn validate_config(config: &LauncherConfig, previous: &LauncherConfig) -> Result
     }
     validate_activation(&config.activation.macos)?;
     validate_activation(&config.activation.windows)?;
+    // 表盤面と裏盤面は別々のキーとして扱う。
+    let mut claim = |key: &str, shift: bool| {
+        if keys.insert((shift, key.to_string())) {
+            Ok(())
+        } else if shift {
+            Err(error("duplicate-key", &format!("Shift+{key}")))
+        } else {
+            Err(error("duplicate-key", key))
+        }
+    };
     for action in &config.window_actions {
         if let Some(key) = &action.key {
             validate_key(key)?;
-            if !keys.insert(key.as_str()) {
-                return Err(error("duplicate-key", key));
-            }
+            claim(key, action.shift)?;
         }
     }
     for item in &config.items {
@@ -276,9 +291,7 @@ fn validate_config(config: &LauncherConfig, previous: &LauncherConfig) -> Result
             return Err(error("empty-name", ""));
         }
         validate_key(&item.key)?;
-        if !keys.insert(item.key.as_str()) {
-            return Err(error("duplicate-key", &item.key));
-        }
+        claim(&item.key, item.shift)?;
         if matches!(item.target_type, TargetType::Website) {
             // URLは開く側（ブラウザ）に解釈を任せるので、http(s)であることだけ確かめる。
             if normalize_url(&item.target.value).ok().as_deref() != Some(item.target.value.as_str())
@@ -337,7 +350,7 @@ fn validate_activation(values: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn next_available_key(config: &Arc<RwLock<LauncherConfig>>) -> Result<String, String> {
+fn next_available_key(config: &Arc<RwLock<LauncherConfig>>, shift: bool) -> Result<String, String> {
     const CANDIDATES: &[&str] = &[
         "KeyA", "KeyS", "KeyD", "KeyF", "KeyG", "KeyH", "KeyJ", "KeyK", "KeyL", "KeyQ", "KeyW",
         "KeyE", "KeyR", "KeyT", "KeyY", "KeyU", "KeyI", "KeyO", "KeyP", "KeyZ", "KeyX", "KeyC",
@@ -350,11 +363,13 @@ fn next_available_key(config: &Arc<RwLock<LauncherConfig>>) -> Result<String, St
     CANDIDATES
         .iter()
         .find(|candidate| {
-            current.items.iter().all(|item| item.key != **candidate)
-                && current
-                    .window_actions
-                    .iter()
-                    .all(|action| action.key.as_deref() != Some(**candidate))
+            current
+                .items
+                .iter()
+                .all(|item| item.shift != shift || item.key != **candidate)
+                && current.window_actions.iter().all(|action| {
+                    action.shift != shift || action.key.as_deref() != Some(**candidate)
+                })
         })
         .map(|value| (*value).to_string())
         .ok_or_else(|| "登録可能なキーが残っていません".to_string())
@@ -620,6 +635,7 @@ mod tests {
             target_type: TargetType::Folder,
             name: "Test".into(),
             key: keys::RESERVED_KEY.into(),
+            shift: false,
             target: TargetPath {
                 kind: "path".into(),
                 value: "/".into(),
@@ -639,6 +655,7 @@ mod tests {
             target_type: TargetType::Folder,
             name: id.into(),
             key: key.into(),
+            shift: false,
             target: TargetPath {
                 kind: "path".into(),
                 value: path.into(),
@@ -707,6 +724,25 @@ mod tests {
         assert_eq!(
             validate_config(&edited, &saved).unwrap_err(),
             "applauncher-error:invalid-url:file:///etc"
+        );
+    }
+    #[test]
+    fn the_same_key_can_be_used_once_per_layer() {
+        let saved = LauncherConfig::default();
+        let mut edited = saved.clone();
+        edited.items.push(item_at("front", "KeyA", "/"));
+        edited.items.push(item_at("back", "KeyA", "/"));
+        assert_eq!(
+            validate_config(&edited, &saved).unwrap_err(),
+            "applauncher-error:duplicate-key:KeyA"
+        );
+        edited.items[1].shift = true;
+        assert!(validate_config(&edited, &saved).is_ok());
+        edited.window_actions[0].key = Some("KeyA".into());
+        edited.window_actions[0].shift = true;
+        assert_eq!(
+            validate_config(&edited, &saved).unwrap_err(),
+            "applauncher-error:duplicate-key:Shift+KeyA"
         );
     }
 }

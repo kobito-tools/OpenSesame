@@ -18,6 +18,8 @@ export interface WindowActionBinding {
   action: string;
   name: string;
   key?: string;
+  /** Shiftを押している間に出る裏盤面への割り当て。 */
+  shift?: boolean;
 }
 
 export interface TargetIcon {
@@ -30,6 +32,8 @@ export interface LauncherItem {
   type: "application" | "folder" | "website";
   name: string;
   key: string;
+  /** Shiftを押している間に出る裏盤面への割り当て。 */
+  shift?: boolean;
   target: {
     /** Webサイトは "url"、それ以外はファイルシステム上の "path"。 */
     kind: "path" | "url";

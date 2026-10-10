@@ -48,6 +48,9 @@ pub struct WindowActionBinding {
     pub action: String,
     pub name: String,
     pub key: Option<String>,
+    /// Shiftを押している間に出る裏盤面への割り当て。
+    #[serde(default)]
+    pub shift: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,6 +81,9 @@ pub struct LauncherItem {
     pub target_type: TargetType,
     pub name: String,
     pub key: String,
+    /// Shiftを押している間に出る裏盤面への割り当て。
+    #[serde(default)]
+    pub shift: bool,
     pub target: TargetPath,
     pub icon: TargetIcon,
     /// アプリが既に前面にあるときは、開く代わりに隠す（Windowsは最小化）。
@@ -156,6 +162,7 @@ pub fn default_window_actions() -> Vec<WindowActionBinding> {
         action: action.into(),
         name: name.into(),
         key: None,
+        shift: false,
     })
     .collect()
 }
