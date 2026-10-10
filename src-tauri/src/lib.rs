@@ -134,6 +134,43 @@ async fn select_target(
     }))
 }
 
+/// Webサイトはファイル選択を経ないので、入力されたURLから登録項目を組み立てる。
+/// 表示名を省略したときはドメイン名を使う。
+#[tauri::command]
+fn create_website(
+    url: String,
+    name: Option<String>,
+    key: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<LauncherItem, String> {
+    let url = normalize_url(&url)?;
+    let name = name
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| website_name(&url));
+    let key = match key {
+        Some(requested) => {
+            validate_key(&requested)?;
+            requested
+        }
+        None => next_available_key(&state.config)?,
+    };
+    Ok(LauncherItem {
+        id: Uuid::new_v4().to_string(),
+        target_type: TargetType::Website,
+        name,
+        key,
+        target: TargetPath {
+            kind: "url".into(),
+            value: url,
+        },
+        icon: TargetIcon {
+            kind: "system".into(),
+            value: None,
+        },
+    })
+}
+
 #[tauri::command]
 async fn select_custom_icon(
     item_id: String,
@@ -239,6 +276,14 @@ fn validate_config(config: &LauncherConfig, previous: &LauncherConfig) -> Result
         if !keys.insert(item.key.as_str()) {
             return Err(error("duplicate-key", &item.key));
         }
+        if matches!(item.target_type, TargetType::Website) {
+            // URLは開く側（ブラウザ）に解釈を任せるので、http(s)であることだけ確かめる。
+            if normalize_url(&item.target.value).ok().as_deref() != Some(item.target.value.as_str())
+            {
+                return Err(error("invalid-url", &item.target.value));
+            }
+            continue;
+        }
         let already_registered = previous
             .items
             .iter()
@@ -310,6 +355,42 @@ fn next_available_key(config: &Arc<RwLock<LauncherConfig>>) -> Result<String, St
         })
         .map(|value| (*value).to_string())
         .ok_or_else(|| "登録可能なキーが残っていません".to_string())
+}
+
+/// `example.com` のようにスキームを省いた入力は https として扱う。
+/// `open` に渡すので、任意のスキームでアプリやファイルが開かれないよう http(s) に限る。
+fn normalize_url(input: &str) -> Result<String, String> {
+    let trimmed = input.trim();
+    let url = if trimmed.contains("://") {
+        trimmed.to_string()
+    } else {
+        format!("https://{trimmed}")
+    };
+    let rest = url
+        .split_once("://")
+        .filter(|(scheme, _)| {
+            scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
+        })
+        .map(|(_, rest)| rest)
+        .ok_or_else(|| error("invalid-url", trimmed))?;
+    let host = url_host(rest);
+    if host.is_empty() || url.chars().any(char::is_whitespace) {
+        return Err(error("invalid-url", trimmed));
+    }
+    Ok(url)
+}
+
+/// スキームより後ろからホスト名だけを取り出す。
+fn url_host(rest: &str) -> &str {
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
+    host.split(':').next().unwrap_or("")
+}
+
+fn website_name(url: &str) -> String {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let host = url_host(rest);
+    host.strip_prefix("www.").unwrap_or(host).to_string()
 }
 
 fn display_name(path: &Path) -> String {
@@ -464,6 +545,7 @@ pub fn run() {
             get_config,
             save_config,
             select_target,
+            create_website,
             select_custom_icon,
             runtime_info,
             open_accessibility_settings
@@ -586,6 +668,40 @@ mod tests {
         assert_eq!(
             validate_config(&edited, &saved).unwrap_err(),
             "applauncher-error:missing-target:/nonexistent/opensesame"
+        );
+    }
+    #[test]
+    fn urls_without_a_scheme_become_https() {
+        assert_eq!(normalize_url(" example.com/docs ").unwrap(), "https://example.com/docs");
+        assert_eq!(normalize_url("http://localhost:3000").unwrap(), "http://localhost:3000");
+    }
+
+    #[test]
+    fn only_web_urls_are_accepted() {
+        for input in ["file:///etc/passwd", "javascript://alert(1)", "https://", "", "a b.com"] {
+            assert!(normalize_url(input).is_err(), "{input} should be rejected");
+        }
+    }
+
+    #[test]
+    fn website_name_is_the_host_without_www() {
+        assert_eq!(website_name("https://www.example.com/path?q=1"), "example.com");
+        assert_eq!(website_name("https://user@docs.rs:443/"), "docs.rs");
+    }
+
+    #[test]
+    fn websites_skip_the_path_check_but_need_a_web_url() {
+        let saved = LauncherConfig::default();
+        let mut edited = saved.clone();
+        let mut site = item_at("site", "KeyA", "https://example.com");
+        site.target_type = TargetType::Website;
+        site.target.kind = "url".into();
+        edited.items.push(site);
+        assert!(validate_config(&edited, &saved).is_ok());
+        edited.items[0].target.value = "file:///etc".into();
+        assert_eq!(
+            validate_config(&edited, &saved).unwrap_err(),
+            "applauncher-error:invalid-url:file:///etc"
         );
     }
 }

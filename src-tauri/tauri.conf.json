@@ -76,7 +76,7 @@
       "signingIdentity": "-"
     },
     "copyright": "Copyright (c) 2026 ta-nish18. MIT License.",
-    "longDescription": "Hold a modifier key combination to show a keyboard-shaped launcher, then press a key to open an app, a folder, or snap the front window.",
+    "longDescription": "Hold a modifier key combination to show a keyboard-shaped launcher, then press a key to open an app, a folder, a website, or snap the front window.",
     "license": "MIT"
   },
   "mainBinaryName": "OpenSesame"

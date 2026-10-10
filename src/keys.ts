@@ -234,6 +234,13 @@ export function layoutKeys(layout: KeyboardLayout): Set<string> {
   );
 }
 
+/** アイコンを取得できなかった登録項目の代替表示。 */
+export function fallbackGlyph(type: string, name: string): string {
+  if (type === "folder") return "📁";
+  if (type === "website") return "🌐";
+  return name.slice(0, 1).toUpperCase();
+}
+
 const EXTRA_LABELS: Record<string, string> = {
   Backquote: "`",
   Minus: "-",

@@ -7,6 +7,7 @@ import {
   ASSIGNABLE_KEYS,
   buildKeyboard,
   displayKey,
+  fallbackGlyph,
   KEY_GROUPS,
   KEYBOARD_LAYOUTS_ORDER,
   layoutKeys,
@@ -43,7 +44,7 @@ function targetIcon(item: LauncherItem): HTMLElement {
     image.alt = "";
     visual.append(image);
   } else {
-    visual.textContent = item.type === "folder" ? "📁" : item.name.slice(0, 1).toUpperCase();
+    visual.textContent = fallbackGlyph(item.type, item.name);
   }
   return visual;
 }
@@ -151,6 +152,21 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     }
   };
 
+  /** 登録できたかどうかを返す。失敗時は入力欄を残して直せるようにする。 */
+  const addWebsite = async (url: string, name: string, key?: string): Promise<boolean> => {
+    try {
+      const item = await invoke<LauncherItem>("create_website", {
+        url,
+        name: name || null,
+        key: key ?? null,
+      });
+      config.items.push(item);
+      return await save();
+    } catch (error) {
+      showStatus(translateError(error), "error");
+      return false;
+    }
+  };
   const occupiedByOther = (ownerId: string, key: string) => {
     const itemUses = config.items.some((item) => item.id !== ownerId && item.key === key);
     const actionUses = config.window_actions.some(
@@ -296,8 +312,11 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
 
   const closePicker = () => root.querySelector(".picker-backdrop")?.remove();
 
-  /** 空いているキーを押したときの3択。選ぶとOSの選択UIか操作一覧へ進む。 */
-  const openPicker = (code: string) => {
+  /**
+   * 空いているキーを押したときの選択肢。選ぶとOSの選択UIか操作一覧、URL入力へ進む。
+   * `code` を省くとURL入力から始め、空いているキーを自動で割り当てる。
+   */
+  const openPicker = (code?: string) => {
     closePicker();
     const backdrop = document.createElement("div");
     backdrop.className = "picker-backdrop";
@@ -313,7 +332,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     const paintChoices = () => {
       card.replaceChildren();
       const title = document.createElement("strong");
-      title.textContent = t("picker.title", { key: displayKey(code) });
+      title.textContent = t("picker.title", { key: displayKey(code ?? "") });
       const lead = document.createElement("p");
       lead.textContent = t("picker.lead");
       const list = document.createElement("div");
@@ -336,6 +355,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
             void addTarget("folder", code);
           },
         ],
+        ["picker.website", "picker.websiteDesc", paintWebsiteForm],
       ];
       for (const [label, description, run] of choices) {
         const choice = document.createElement("button");
@@ -360,7 +380,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     const paintWindowActions = () => {
       card.replaceChildren();
       const title = document.createElement("strong");
-      title.textContent = t("picker.chooseAction", { key: displayKey(code) });
+      title.textContent = t("picker.chooseAction", { key: displayKey(code ?? "") });
       const list = document.createElement("div");
       list.className = "picker-actions";
       for (const binding of config.window_actions) {
@@ -372,7 +392,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         choice.append(windowIcon(binding.action), name);
         choice.addEventListener("click", () => {
           // 同じ操作が別のキーに付いていたら、こちらへ付け替える。
-          binding.key = code;
+          if (code) binding.key = code;
           closePicker();
           void save();
         });
@@ -386,8 +406,56 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       card.append(title, list, footer);
     };
 
-    paintChoices();
+    const paintWebsiteForm = () => {
+      card.replaceChildren();
+      const title = document.createElement("strong");
+      title.textContent = code
+        ? t("picker.websiteTitle", { key: displayKey(code) })
+        : t("picker.website");
+      const form = document.createElement("form");
+      form.className = "picker-form";
+      const field = (label: string, placeholder: string): [HTMLLabelElement, HTMLInputElement] => {
+        const wrapper = document.createElement("label");
+        wrapper.className = "picker-field";
+        const caption = document.createElement("span");
+        caption.textContent = label;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.placeholder = placeholder;
+        input.spellcheck = false;
+        input.autocapitalize = "off";
+        wrapper.append(caption, input);
+        return [wrapper, input];
+      };
+      const [urlField, urlInput] = field(t("picker.websiteUrl"), "https://example.com");
+      urlInput.required = true;
+      const [nameField, nameInput] = field(t("picker.websiteName"), t("picker.websiteNameHint"));
+      const footer = document.createElement("div");
+      footer.className = "picker-footer";
+      // キーから来たときは種類の選択へ戻れるようにし、ボタンから来たときは閉じるだけにする。
+      const backButton = createButton(t(code ? "picker.back" : "picker.cancel"), "button compact");
+      backButton.addEventListener("click", code ? paintChoices : closePicker);
+      const submit = createButton(t("picker.websiteAdd"), "button compact primary");
+      submit.type = "submit";
+      footer.append(backButton, submit);
+      form.append(urlField, nameField, footer);
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const url = urlInput.value.trim();
+        if (!url) return;
+        submit.disabled = true;
+        const added = await addWebsite(url, nameInput.value.trim(), code);
+        if (added) closePicker();
+        else submit.disabled = false;
+      });
+      card.append(title, form);
+      urlInput.focus();
+    };
+
+    if (code) paintChoices();
+    else paintWebsiteForm();
     root.append(backdrop);
+    if (!code) backdrop.querySelector<HTMLInputElement>(".picker-field input")?.focus();
   };
 
   const onKeyboardSelect = (code: string) => {
@@ -439,6 +507,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     const sortedWindows = [...config.window_actions].sort((a, b) => order(a.key) - order(b.key));
     const apps = sortedItems.filter((item) => item.type === "application");
     const folders = sortedItems.filter((item) => item.type === "folder");
+    const websites = sortedItems.filter((item) => item.type === "website");
     container.append(sectionLabel(t("section.window"), t("section.window.desc")));
     for (const action of sortedWindows) container.append(windowRow(action));
     container.append(sectionLabel(t("section.apps"), t("section.count", { count: apps.length })));
@@ -447,6 +516,10 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       sectionLabel(t("section.folders"), t("section.count", { count: folders.length })),
     );
     for (const item of folders) container.append(itemRow(item));
+    container.append(
+      sectionLabel(t("section.websites"), t("section.count", { count: websites.length })),
+    );
+    for (const item of websites) container.append(itemRow(item));
   };
 
   /**
@@ -678,8 +751,10 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     const addApp = createButton(t("button.addApp"), "button primary");
     const addFolder = createButton(t("button.addFolder"));
     addApp.addEventListener("click", () => void addTarget("application"));
+    const addSite = createButton(t("button.addWebsite"));
     addFolder.addEventListener("click", () => void addTarget("folder"));
-    actions?.append(addApp, addFolder);
+    addSite.addEventListener("click", () => openPicker());
+    actions?.append(addApp, addFolder, addSite);
 
     shell.querySelector<HTMLElement>("[data-keyboard]")?.append(keyboardPreview());
     const items = shell.querySelector<HTMLElement>("[data-items]");
