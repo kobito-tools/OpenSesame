@@ -39,20 +39,19 @@ pub fn normalize_modifier(value: &str) -> Option<&'static str> {
     })
 }
 
-/// 正規名を rdev のキーへ変換する。
+/// rdevの修飾キーを正規名へ変換する。起動キーとShiftの判定に使う。
 #[cfg(not(target_os = "macos"))]
-pub fn modifier_key(code: &str) -> Option<Key> {
-    Some(match normalize_modifier(code)? {
-        "ControlLeft" => Key::ControlLeft,
-        "ControlRight" => Key::ControlRight,
-        // macOSではOptionキーがAlt/AltGrとして報告される。
-        "AltLeft" => Key::Alt,
-        "AltRight" => Key::AltGr,
-        "MetaLeft" => Key::MetaLeft,
-        "MetaRight" => Key::MetaRight,
-        "ShiftLeft" => Key::ShiftLeft,
-        "ShiftRight" => Key::ShiftRight,
-        "Fn" => Key::Function,
+fn modifier_name(key: Key) -> Option<&'static str> {
+    Some(match key {
+        Key::ControlLeft => "ControlLeft",
+        Key::ControlRight => "ControlRight",
+        Key::Alt => "AltLeft",
+        Key::AltGr => "AltRight",
+        Key::MetaLeft => "MetaLeft",
+        Key::MetaRight => "MetaRight",
+        Key::ShiftLeft => "ShiftLeft",
+        Key::ShiftRight => "ShiftRight",
+        Key::Function => "Fn",
         _ => return None,
     })
 }
@@ -125,7 +124,7 @@ pub fn key_name(key: Key) -> Option<&'static str> {
         Key::Unknown(94) => "IntlRo",
         #[cfg(target_os = "macos")]
         Key::Unknown(10) => "IntlBackslash",
-        _ => return None,
+        _ => return modifier_name(key),
     })
 }
 
@@ -306,5 +305,13 @@ mod tests {
         assert_eq!(key_name(Key::Num7), Some("Digit7"));
         assert_eq!(key_name(Key::Dot), Some(RESERVED_KEY));
         assert_eq!(key_name(Key::Return), Some("Enter"));
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn maps_modifier_keys() {
+        assert_eq!(key_name(Key::ControlLeft), Some("ControlLeft"));
+        assert_eq!(key_name(Key::Alt), Some("AltLeft"));
+        assert_eq!(key_name(Key::ShiftRight), Some("ShiftRight"));
     }
 }
