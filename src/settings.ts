@@ -251,6 +251,23 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     return row;
   };
 
+  const hideToggle = (item: LauncherItem): HTMLElement => {
+    const label = document.createElement("label");
+    label.className = "hide-toggle";
+    label.title = t("item.hideWhenFrontmostHint");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = item.hide_when_frontmost ?? false;
+    checkbox.addEventListener("change", () => {
+      item.hide_when_frontmost = checkbox.checked;
+      void save();
+    });
+    const text = document.createElement("span");
+    text.textContent = t("item.hideWhenFrontmost");
+    label.append(checkbox, text);
+    return label;
+  };
+
   const itemRow = (item: LauncherItem): HTMLElement => {
     const row = document.createElement("article");
     row.className = "item-row";
@@ -295,6 +312,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     const rowActions = document.createElement("div");
     rowActions.className = "row-actions";
     if (offLayout(item.key)) rowActions.append(offLayoutBadge());
+    if (item.type === "application") rowActions.append(hideToggle(item));
     rowActions.append(iconButton, remove);
     row.append(detail, select, rowActions);
     return row;

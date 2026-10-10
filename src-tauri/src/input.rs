@@ -1,6 +1,7 @@
 use crate::{
+    frontmost,
     keys::{key_matches, RESERVED_KEY},
-    model::{LauncherConfig, LauncherItem},
+    model::{LauncherConfig, LauncherItem, TargetType},
     window_layout,
 };
 use std::{
@@ -93,7 +94,7 @@ impl Machine {
         if let Some(item) = find_item(&self.config, key) {
             self.consumed.insert(key.to_string());
             if first_press {
-                launch(item);
+                launch(self.app.clone(), item);
             }
             return Verdict::Swallow;
         }
@@ -315,8 +316,13 @@ fn find_window_action(config: &Arc<RwLock<LauncherConfig>>, pressed_name: &str) 
         .map(|binding| binding.action.clone())
 }
 
-fn launch(item: LauncherItem) {
+fn launch(app: AppHandle, item: LauncherItem) {
     thread::spawn(move || {
+        let toggles = item.hide_when_frontmost
+            && matches!(item.target_type, TargetType::Application);
+        if toggles && frontmost::hide_if_frontmost(&app, &item.target.value) {
+            return;
+        }
         let _ = open::that(item.target.value);
     });
 }

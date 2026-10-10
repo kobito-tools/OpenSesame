@@ -80,6 +80,9 @@ pub struct LauncherItem {
     pub key: String,
     pub target: TargetPath,
     pub icon: TargetIcon,
+    /// アプリが既に前面にあるときは、開く代わりに隠す（Windowsは最小化）。
+    #[serde(default)]
+    pub hide_when_frontmost: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

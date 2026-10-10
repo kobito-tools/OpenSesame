@@ -1,3 +1,4 @@
+mod frontmost;
 mod icons;
 mod input;
 mod instance;
@@ -131,6 +132,7 @@ async fn select_target(
             kind: "system".into(),
             value: cached,
         },
+        hide_when_frontmost: false,
     }))
 }
 
@@ -168,6 +170,7 @@ fn create_website(
             kind: "system".into(),
             value: None,
         },
+        hide_when_frontmost: false,
     })
 }
 
@@ -625,6 +628,7 @@ mod tests {
                 kind: "system".into(),
                 value: None,
             },
+            hide_when_frontmost: false,
         });
         assert!(validate_config(&config, &LauncherConfig::default()).is_err());
     }
@@ -643,6 +647,7 @@ mod tests {
                 kind: "system".into(),
                 value: None,
             },
+            hide_when_frontmost: false,
         }
     }
 

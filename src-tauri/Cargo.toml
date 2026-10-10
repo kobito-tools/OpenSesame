@@ -30,7 +30,7 @@ file_icon_provider = "1.0.2"
 window-vibrancy = "0.6"
 # フルスクリーンのSpaceにもポップアップを出すため、NSWindowの挙動を直接設定する。
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSResponder", "NSWindow", "NSRunningApplication"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSResponder", "NSWindow", "NSRunningApplication", "NSWorkspace"] }
 # 新しい版を起動したとき、動いている旧版を探して終了させる。
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSString", "NSURL"] }
 

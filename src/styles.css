@@ -167,7 +167,12 @@ h2 { margin: 0; font-size: 15px; }
 }
 .items-table { flex: 1; min-height: 0; padding: 6px 8px 12px; overflow-y: auto; }
 
-.button-row, .row-actions { display: flex; gap: 8px; }
+.button-row, .row-actions { display: flex; align-items: center; gap: 8px; }
+.hide-toggle {
+  display: flex; align-items: center; gap: 5px; white-space: nowrap;
+  color: var(--ink-soft); font-size: 11px; cursor: pointer;
+}
+.hide-toggle input { margin: 0; accent-color: var(--accent); }
 .button {
   border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px;
   color: var(--ink-soft); background: var(--surface-strong); cursor: pointer; transition: .15s ease;
