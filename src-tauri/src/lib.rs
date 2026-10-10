@@ -1,3 +1,4 @@
+mod favicon;
 mod frontmost;
 mod icons;
 mod input;
@@ -141,9 +142,9 @@ async fn select_target(
 }
 
 /// Webサイトはファイル選択を経ないので、入力されたURLから登録項目を組み立てる。
-/// 表示名を省略したときはドメイン名を使う。
+/// 表示名を省略したときはドメイン名を使う。アイコンが取れなくても登録はできる。
 #[tauri::command]
-fn create_website(
+async fn create_website(
     url: String,
     name: Option<String>,
     key: Option<String>,
@@ -163,8 +164,10 @@ fn create_website(
         }
         None => next_available_key(&state.config, shift)?,
     };
+    let id = Uuid::new_v4().to_string();
+    let icon = fetch_website_icon(&state.data_dir, &id, &url).await.ok();
     Ok(LauncherItem {
-        id: Uuid::new_v4().to_string(),
+        id,
         target_type: TargetType::Website,
         name,
         key,
@@ -175,10 +178,61 @@ fn create_website(
         },
         icon: TargetIcon {
             kind: "system".into(),
-            value: None,
+            value: icon,
         },
         hide_when_frontmost: false,
     })
+}
+
+/// サイトのアイコンが変わったときや、登録時に取れなかったときに取り直す。
+#[tauri::command]
+async fn refetch_website_icon(
+    item_id: String,
+    state: State<'_, AppState>,
+) -> Result<LauncherItem, String> {
+    let mut item = state
+        .config
+        .read()
+        .map_err(|_| "設定のロックを取得できません".to_string())?
+        .items
+        .iter()
+        .find(|item| item.id == item_id)
+        .cloned()
+        .ok_or_else(|| "対象の登録項目が見つかりません".to_string())?;
+    if !matches!(item.target_type, TargetType::Website) {
+        return Err(error("icon-fetch-failed", ""));
+    }
+    let fetched = fetch_website_icon(&state.data_dir, &item.id, &item.target.value)
+        .await
+        .map_err(|_| error("icon-fetch-failed", ""))?;
+    // 取得済みのアイコンだけ片付ける。自分で選んだ画像は元のファイルを残しておく。
+    if item.icon.kind == "system" {
+        if let Some(previous) = &item.icon.value {
+            let _ = fs::remove_file(previous);
+        }
+    }
+    item.icon = TargetIcon {
+        kind: "system".into(),
+        value: Some(fetched),
+    };
+    Ok(item)
+}
+
+/// 取り直すたびに別名で保存する。同じパスだとWebViewが古い画像を出し続けるため。
+async fn fetch_website_icon(data_dir: &Path, id: &str, url: &str) -> Result<String, String> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis())
+        .unwrap_or_default();
+    let destination = data_dir
+        .join("icons/system")
+        .join(format!("{id}-{stamp}.png"));
+    let target = destination.clone();
+    let url = url.to_string();
+    tauri::async_runtime::spawn_blocking(move || favicon::fetch(&url, &target))
+        .await
+        .map_err(|error| error.to_string())??;
+    Ok(destination.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -568,6 +622,7 @@ pub fn run() {
             save_config,
             select_target,
             create_website,
+            refetch_website_icon,
             select_custom_icon,
             runtime_info,
             open_accessibility_settings
