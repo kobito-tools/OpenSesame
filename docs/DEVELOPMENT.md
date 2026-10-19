@@ -60,6 +60,8 @@ npm run tauri dev
 npm run tauri build
 ```
 
+手元で使う `.app` だけを作る場合（macOS）は、`./build.sh` を実行します。`npm ci` と `tauri build --bundles app` を行い、このフォルダ直下に `OpenSesame!.app` を置きます。`OpenSesame-Setup.command` は、これを Finder からダブルクリックで動かすための入口です。
+
 テスト:
 
 ```bash
