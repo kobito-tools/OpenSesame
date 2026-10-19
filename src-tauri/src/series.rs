@@ -40,13 +40,39 @@ pub fn apps_dir() -> Option<PathBuf> {
     config_dir().map(|dir| dir.join("apps"))
 }
 
+/// 起動情報に名乗るアイコンの画像。`.app` の中（macOS は `Contents/Resources/`、
+/// Windows は実行ファイルの隣）に入れておくので、`.app` を移しても見つかる。
+/// 元は `src-tauri/icons/128x128@2x.png`（`tauri.conf.json` の `bundle.resources`）。
+pub const ICON_FILE: &str = "kobito-icon.png";
+/// 約束④の `icon.file` の大きさの上限。
+const ICON_MAX_BYTES: u64 = 256 * 1024;
+
+/// 実行ファイルから見た、`.app` の中のアイコンの画像。無い・大きすぎるときは `None`。
+pub fn bundled_icon(executable: &Path) -> Option<PathBuf> {
+    let dir = executable.parent()?;
+    #[cfg(target_os = "macos")]
+    let path = dir.parent()?.join("Resources").join(ICON_FILE);
+    #[cfg(not(target_os = "macos"))]
+    let path = dir.join(ICON_FILE);
+    let metadata = fs::metadata(&path).ok()?;
+    (metadata.is_file() && metadata.len() <= ICON_MAX_BYTES).then_some(path)
+}
+
 /// 自分の起動情報。起動のコマンドは、今動いている実行ファイルそのもの。
 /// `embed` は書かない（ユーティリティアプリは workspace の中に表示しない）。
+/// 見せ方（英語名・色・アイコン）も名乗る。外から呼べる操作（`actions`）は持たない。
 pub fn launch_record(executable: &Path) -> Value {
+    let mut icon = json!({ "glyph": "🔑" });
+    if let Some(file) = bundled_icon(executable) {
+        icon["file"] = json!(file.to_string_lossy());
+    }
     json!({
         "app": APP_ID,
         "name": APP_NAME,
         "command": [executable.to_string_lossy()],
+        "name_en": APP_NAME,
+        "color": "gray",
+        "icon": icon,
     })
 }
 
@@ -342,6 +368,49 @@ pub(crate) mod tests {
             json!(["/Applications/OpenSesame!.app/Contents/MacOS/OpenSesame"])
         );
         assert!(record.get("embed").is_none());
+    }
+
+    #[test]
+    fn names_its_look_with_the_icon_inside_the_app() {
+        let root = std::env::temp_dir().join(format!("opensesame-bundle-{}", uuid::Uuid::new_v4()));
+        #[cfg(target_os = "macos")]
+        let (executable, icon) = (
+            root.join("OpenSesame!.app/Contents/MacOS/OpenSesame"),
+            root.join("OpenSesame!.app/Contents/Resources")
+                .join(ICON_FILE),
+        );
+        #[cfg(not(target_os = "macos"))]
+        let (executable, icon) = (root.join("OpenSesame.exe"), root.join(ICON_FILE));
+        // 画像が無ければ、代わりの1文字だけを名乗る。
+        let record = launch_record(&executable);
+        assert_eq!(record["name_en"], "OpenSesame!");
+        assert_eq!(record["color"], "gray");
+        assert_eq!(record["icon"], json!({ "glyph": "🔑" }));
+        fs::create_dir_all(icon.parent().unwrap()).unwrap();
+        fs::write(&icon, b"png").unwrap();
+        let record = launch_record(&executable);
+        assert_eq!(record["icon"]["file"], icon.to_string_lossy().as_ref());
+        assert!(Path::new(record["icon"]["file"].as_str().unwrap()).is_absolute());
+        // 約束の上限（256 KB）を超える画像は名乗らない。
+        fs::write(&icon, vec![0u8; 256 * 1024 + 1]).unwrap();
+        assert!(launch_record(&executable)["icon"].get("file").is_none());
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// `.app` に入れる画像が、約束の形（正方形の .png、256 KB 以下）に合うこと。
+    #[test]
+    fn the_bundled_icon_fits_the_contract() {
+        let config: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let resources = config["bundle"]["resources"].as_object().unwrap();
+        let (source, _) = resources
+            .iter()
+            .find(|(_, target)| target.as_str() == Some(ICON_FILE))
+            .expect("the icon is bundled");
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(source);
+        assert_eq!(path.extension().unwrap(), "png");
+        assert!(fs::metadata(&path).unwrap().len() <= ICON_MAX_BYTES);
+        let image = image::open(&path).unwrap();
+        assert_eq!(image.width(), image.height());
     }
 
     #[test]
