@@ -6,6 +6,7 @@ mod input;
 mod instance;
 mod keys;
 mod model;
+mod series;
 mod storage;
 #[cfg(target_os = "macos")]
 mod tap_macos;
@@ -673,10 +674,18 @@ const POPUP_CORNER_RADIUS: f64 = 22.0;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // `--write-launch-info` のときは、ここで書いて終わる。下の二重起動の処理より先に呼ぶので、
+    // 動いている OpenSesame! を終わらせない。
+    series::exit_if_only_writing_launch_info();
     // 他の版と並んで動くとキーフックが二重になるので、ウィンドウを作る前に片付ける。
     instance::take_over_or_exit();
     tauri::Builder::default()
         .setup(|app| {
+            // シリーズのほかのアプリが起動のしかたを知れるよう、起動のたびに書き直す。
+            // 書けなくても、ランチャーの機能には関係しないので起動は止めない。
+            if let Err(message) = series::write_launch_info() {
+                eprintln!("{message}");
+            }
             let data_dir = app
                 .path()
                 .app_local_data_dir()

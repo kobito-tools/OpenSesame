@@ -147,10 +147,7 @@ else
   info "$PWD/$APP_NAME.app を作りました"
 fi
 
-# 4. 起動情報を書き出す
-step "4. 起動情報を書き出します"
-info "飛ばします。$APP_NAME は、起動情報の書き出しにまだ対応していません。"
-
+# 起動情報は .app の場所を含むので、移すかどうかを決めてから書き出す（手順4はこのあと）。
 # 5. 任意の設定：アプリケーションフォルダへ移す
 step "5. 任意の設定"
 app_path="$PWD/$APP_NAME.app"
@@ -179,6 +176,17 @@ if ask "$APP_NAME.app をアプリケーションフォルダへ移しますか�
   fi
 else
   info "移さずにおきます"
+fi
+
+# 4. 起動情報（約束④）を、置いた場所の .app で書き出す。
+# --write-launch-info のときは、書いてすぐ終わる（画面もキーの監視も始めず、動いている方も終わらせない）。
+step "4. 起動情報を書き出します"
+if (( dry_run )); then
+  would "$app_path/Contents/MacOS/OpenSesame --write-launch-info で書き出します"
+elif written=$("$app_path/Contents/MacOS/OpenSesame" --write-launch-info); then
+  info "$written に書き出しました"
+else
+  echo "起動情報を書き出せませんでした。アプリを一度起動すると、書き出されます。" >&2
 fi
 
 # 6. 起動のしかた
