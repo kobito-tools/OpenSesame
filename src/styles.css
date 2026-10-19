@@ -278,6 +278,9 @@ h2 { margin: 0; font-size: 15px; }
 }
 .picker-action:hover { border-color: rgba(79, 70, 229, .45); background: white; }
 .picker-action .table-icon { width: 28px; height: 28px; flex: 0 0 28px; }
+.picker-series { display: grid; gap: 12px; max-height: 340px; overflow-y: auto; }
+.picker-series-app { display: grid; gap: 6px; }
+.picker-series-name { font-size: 12px; font-weight: 600; color: var(--ink-soft); }
 .picker-footer { display: flex; justify-content: flex-end; gap: 8px; }
 .picker-form { display: grid; gap: 10px; }
 .picker-field { display: grid; gap: 4px; font-size: 11px; color: var(--ink-soft); }

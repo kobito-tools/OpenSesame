@@ -380,6 +380,10 @@ fn launch(app: AppHandle, item: LauncherItem) {
         );
         return;
     }
+    if matches!(item.target_type, TargetType::KobitoAction) {
+        launch_series_action(app, &item);
+        return;
+    }
     thread::spawn(move || {
         let toggles = item.hide_when_frontmost
             && matches!(item.target_type, TargetType::Application);
@@ -388,6 +392,28 @@ fn launch(app: AppHandle, item: LauncherItem) {
         }
         let _ = open::that(item.target.value);
     });
+}
+
+/// 押された時点の起動情報を読み直し、`{today}` を置き換えた URL を、起動のコマンドの
+/// 後ろに足してシェルを通さずに動かす（④の決まり）。workspace の中で表示中のアプリへは届けず、
+/// アプリの単体のウインドウで開く。見つからない・すぐに失敗したときは、コマンドと同じく知らせる。
+fn launch_series_action(app: AppHandle, item: &LauncherItem) {
+    let notify = move |message: String| {
+        let _ = app.emit("launch-failed", message);
+        show_settings(&app);
+    };
+    let (Some(app_id), Some(action)) = (item.target.app.as_deref(), item.target.action.as_deref())
+    else {
+        notify(error("series-app-missing", ""));
+        return;
+    };
+    match crate::series::resolve_action(app_id, action, &crate::series::today()) {
+        Ok((mut program, url)) => {
+            program.push(url);
+            crate::command::launch_program(&program, notify);
+        }
+        Err(message) => notify(message),
+    }
 }
 
 fn show_popup(app: &AppHandle) {

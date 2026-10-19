@@ -19,6 +19,7 @@ import type {
   LauncherItem,
   Platform,
   RuntimeInfo,
+  SeriesApp,
   WindowActionBinding,
 } from "./types";
 
@@ -197,6 +198,23 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     }
   };
 
+  /** 設定に覚えるのはアプリIDと操作の id だけ。URL は押されたときに Rust 側が起動情報から読む。 */
+  const addSeriesAction = async (app: string, action: string, key?: string): Promise<boolean> => {
+    try {
+      const item = await invoke<LauncherItem>("create_series_action", {
+        app,
+        action,
+        key: key ?? null,
+        shift: back,
+      });
+      config.items.push(item);
+      return await save();
+    } catch (error) {
+      showStatus(translateError(error), "error");
+      return false;
+    }
+  };
+
   const occupiedByOther = (ownerId: string, key: string) => {
     const itemUses = config.items.some(
       (item) => item.id !== ownerId && onLayer(item) && item.key === key,
@@ -320,9 +338,16 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     const path = document.createElement("span");
     path.className = "target-path";
     const dir = item.type === "command" ? item.target.working_dir : undefined;
-    path.textContent = dir
-      ? t("item.commandIn", { command: item.target.value, dir })
-      : item.target.value;
+    if (item.type === "kobito-action") {
+      path.textContent = t("item.seriesAction", {
+        app: item.target.app ?? "",
+        action: item.target.action ?? "",
+      });
+    } else {
+      path.textContent = dir
+        ? t("item.commandIn", { command: item.target.value ?? "", dir })
+        : (item.target.value ?? "");
+    }
     path.title = path.textContent;
     detail.append(name, path);
     const select = keySelect(item.id, item.key, false, (key) => {
@@ -390,7 +415,10 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
    * `code` を省くと `start` の入力欄から始め、空いているキーを自動で割り当てる。
    * `start` に登録済みのコマンドを渡すと、その編集になる。
    */
-  const openPicker = (code?: string, start: "website" | "command" | LauncherItem = "website") => {
+  const openPicker = (
+    code?: string,
+    start: "website" | "command" | "series" | LauncherItem = "website",
+  ) => {
     closePicker();
     const backdrop = document.createElement("div");
     backdrop.className = "picker-backdrop";
@@ -431,6 +459,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         ],
         ["picker.website", "picker.websiteDesc", paintWebsiteForm],
         ["picker.command", "picker.commandDesc", () => paintCommandForm()],
+        ["picker.series", "picker.seriesDesc", () => void paintSeriesActions()],
       ];
       for (const [label, description, run] of choices) {
         const choice = document.createElement("button");
@@ -482,6 +511,59 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       footer.className = "picker-footer";
       footer.append(backButton);
       card.append(title, list, footer);
+    };
+
+    /**
+     * シリーズのアプリが起動情報に名乗った操作を、アプリごとに並べる。
+     * アプリの名前は起動情報から読んだものだけを出す。
+     */
+    const paintSeriesActions = async () => {
+      card.replaceChildren();
+      const title = document.createElement("strong");
+      title.textContent = code
+        ? t("picker.seriesTitle", { key: displayKey(code) })
+        : t("picker.series");
+      const lead = document.createElement("p");
+      lead.textContent = t("picker.seriesLoading");
+      const list = document.createElement("div");
+      list.className = "picker-series";
+      const backButton = createButton(t(code ? "picker.back" : "picker.cancel"), "button compact");
+      backButton.addEventListener("click", code ? paintChoices : closePicker);
+      const footer = document.createElement("div");
+      footer.className = "picker-footer";
+      footer.append(backButton);
+      card.append(title, lead, list, footer);
+      let apps: SeriesApp[] = [];
+      try {
+        apps = await invoke<SeriesApp[]>("list_series_actions");
+      } catch (error) {
+        showStatus(translateError(error), "error");
+      }
+      const english = config.language === "en";
+      lead.textContent = t(apps.length > 0 ? "picker.seriesLead" : "picker.seriesEmpty");
+      for (const app of apps) {
+        const group = document.createElement("section");
+        group.className = "picker-series-app";
+        const heading = document.createElement("span");
+        heading.className = "picker-series-name";
+        heading.textContent = english ? (app.name_en ?? app.name) : app.name;
+        const actions = document.createElement("div");
+        actions.className = "picker-actions";
+        for (const action of app.actions) {
+          const choice = document.createElement("button");
+          choice.type = "button";
+          choice.className = "picker-action";
+          choice.textContent = english ? (action.label_en ?? action.label) : action.label;
+          choice.addEventListener("click", async () => {
+            choice.disabled = true;
+            if (await addSeriesAction(app.app, action.id, code)) closePicker();
+            else choice.disabled = false;
+          });
+          actions.append(choice);
+        }
+        group.append(heading, actions);
+        list.append(group);
+      }
     };
 
     const field = (label: string, placeholder: string): [HTMLLabelElement, HTMLInputElement] => {
@@ -562,7 +644,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       dirField.append(dirRow);
       const [nameField, nameInput] = field(t("picker.commandName"), t("picker.commandNameHint"));
       if (editing) {
-        commandInput.value = editing.target.value;
+        commandInput.value = editing.target.value ?? "";
         dirInput.value = editing.target.working_dir ?? "";
         nameInput.value = editing.name;
       }
@@ -599,6 +681,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
 
     if (code) paintChoices();
     else if (start === "website") paintWebsiteForm();
+    else if (start === "series") void paintSeriesActions();
     else paintCommandForm(start === "command" ? undefined : start);
     root.append(backdrop);
     if (!code) backdrop.querySelector<HTMLInputElement>(".picker-field input")?.focus();
@@ -660,6 +743,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     const folders = sortedItems.filter((item) => item.type === "folder");
     const websites = sortedItems.filter((item) => item.type === "website");
     const commands = sortedItems.filter((item) => item.type === "command");
+    const seriesActions = sortedItems.filter((item) => item.type === "kobito-action");
     container.append(sectionLabel(t("section.window"), t("section.window.desc")));
     for (const action of sortedWindows) container.append(windowRow(action));
     container.append(sectionLabel(t("section.apps"), t("section.count", { count: apps.length })));
@@ -676,6 +760,10 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       sectionLabel(t("section.commands"), t("section.count", { count: commands.length })),
     );
     for (const item of commands) container.append(itemRow(item));
+    container.append(
+      sectionLabel(t("section.series"), t("section.count", { count: seriesActions.length })),
+    );
+    for (const item of seriesActions) container.append(itemRow(item));
   };
 
   /**
@@ -944,7 +1032,9 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     addSite.addEventListener("click", () => openPicker());
     const addCommandButton = createButton(t("button.addCommand"));
     addCommandButton.addEventListener("click", () => openPicker(undefined, "command"));
-    actions?.append(addApp, addFolder, addSite, addCommandButton);
+    const addSeriesButton = createButton(t("button.addSeries"));
+    addSeriesButton.addEventListener("click", () => openPicker(undefined, "series"));
+    actions?.append(addApp, addFolder, addSite, addCommandButton, addSeriesButton);
 
     shell.querySelector<HTMLElement>("[data-keyboard]")?.append(keyboardPreview());
     const items = shell.querySelector<HTMLElement>("[data-items]");
