@@ -70,6 +70,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": {
+      "icons/128x128@2x.png": "kobito-icon.png"
+    },
     "category": "Utility",
     "shortDescription": "Hold a key, open anything",
     "macOS": {
