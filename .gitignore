@@ -1,0 +1,13 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/icons/android/
+src-tauri/icons/ios/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+*.dmg
