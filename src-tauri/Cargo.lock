@@ -2823,6 +2823,7 @@ dependencies = [
 name = "opensesame"
 version = "0.1.4"
 dependencies = [
+ "chrono",
  "file_icon_provider",
  "image",
  "objc2",

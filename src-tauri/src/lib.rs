@@ -135,6 +135,7 @@ async fn select_target(
             kind: "path".into(),
             value: path.to_string_lossy().into_owned(),
             working_dir: None,
+            ..Default::default()
         },
         icon: TargetIcon {
             kind: "system".into(),
@@ -179,6 +180,7 @@ async fn create_website(
             kind: "url".into(),
             value: url,
             working_dir: None,
+            ..Default::default()
         },
         icon: TargetIcon {
             kind: "system".into(),
@@ -228,10 +230,87 @@ fn create_command(
             kind: "command".into(),
             value: command,
             working_dir,
+            ..Default::default()
         },
         icon: TargetIcon {
             kind: "system".into(),
             value: None,
+        },
+        hide_when_frontmost: false,
+    })
+}
+
+/// シリーズのほかのアプリが起動情報（④）に名乗った操作を、アプリごとに返す。
+/// 操作を名乗っていないアプリは出さない。
+#[tauri::command]
+fn list_series_actions() -> Vec<series::SeriesApp> {
+    series::read_all()
+        .into_iter()
+        .filter(|app| !app.actions.is_empty())
+        .collect()
+}
+
+/// シリーズの操作を割り当てる項目を組み立てる。設定に覚えるのはアプリIDと操作の `id` だけで、
+/// URL や起動コマンドは覚えない。表示名は「アプリ名 › 操作の名前」（あとから変えられる）。
+#[tauri::command]
+fn create_series_action(
+    app: String,
+    action: String,
+    key: Option<String>,
+    shift: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<LauncherItem, String> {
+    let record = series::read_app(&app).ok_or_else(|| error("series-app-missing", &app))?;
+    let found = record
+        .actions
+        .iter()
+        .find(|candidate| candidate.id == action)
+        .ok_or_else(|| error("series-action-missing", &format!("{} › {action}", record.name)))?;
+    let english = state
+        .config
+        .read()
+        .map(|config| config.language == "en")
+        .unwrap_or(false);
+    let (app_name, action_label) = if english {
+        (
+            record.name_en.as_deref().unwrap_or(&record.name),
+            found.label_en.as_deref().unwrap_or(&found.label),
+        )
+    } else {
+        (record.name.as_str(), found.label.as_str())
+    };
+    let shift = shift.unwrap_or(false);
+    let key = match key {
+        Some(requested) => {
+            validate_key(&requested)?;
+            requested
+        }
+        None => next_available_key(&state.config, shift)?,
+    };
+    let id = Uuid::new_v4().to_string();
+    // アプリが名乗ったアイコンを、ほかの登録項目と同じ場所へ写す（画面は自分のデータ領域の画像しか出せない）。
+    // 写せなければ（SVG など）名前の1文字目を出す。
+    let icon = record.icon_file.as_ref().and_then(|source| {
+        let destination = state.data_dir.join("icons/system").join(format!("{id}.png"));
+        copy_custom_icon(source, &destination)
+            .ok()
+            .map(|_| destination.to_string_lossy().into_owned())
+    });
+    Ok(LauncherItem {
+        id,
+        target_type: TargetType::KobitoAction,
+        name: format!("{app_name} › {action_label}"),
+        key,
+        shift,
+        target: TargetPath {
+            kind: "kobito-action".into(),
+            app: Some(record.app.clone()),
+            action: Some(found.id.clone()),
+            ..Default::default()
+        },
+        icon: TargetIcon {
+            kind: "system".into(),
+            value: icon,
         },
         hide_when_frontmost: false,
     })
@@ -418,6 +497,16 @@ fn validate_config(config: &LauncherConfig, previous: &LauncherConfig) -> Result
         }
         if matches!(item.target_type, TargetType::Command) {
             validate_command(item, previous)?;
+            continue;
+        }
+        if matches!(item.target_type, TargetType::KobitoAction) {
+            // 起動情報は押されたときに読み直すので、ここでは覚えるものの形だけを確かめる。
+            // アプリを消しても、割り当ての名前やキーは変えられるようにする。
+            let app = item.target.app.as_deref().unwrap_or("");
+            let action = item.target.action.as_deref().unwrap_or("");
+            if !series::is_app_id(app) || action.trim().is_empty() {
+                return Err(error("invalid-series-action", ""));
+            }
             continue;
         }
         let already_registered = previous
@@ -725,6 +814,8 @@ pub fn run() {
             select_target,
             create_website,
             create_command,
+            list_series_actions,
+            create_series_action,
             pick_folder,
             refetch_website_icon,
             select_custom_icon,
@@ -803,6 +894,7 @@ mod tests {
                 kind: "path".into(),
                 value: "/".into(),
                 working_dir: None,
+                ..Default::default()
             },
             icon: TargetIcon {
                 kind: "system".into(),
@@ -824,6 +916,7 @@ mod tests {
                 kind: "path".into(),
                 value: path.into(),
                 working_dir: None,
+                ..Default::default()
             },
             icon: TargetIcon {
                 kind: "system".into(),
@@ -949,6 +1042,34 @@ mod tests {
         let mut renamed = saved.clone();
         renamed.items[0].name = "Build".into();
         assert!(validate_config(&renamed, &saved).is_ok());
+    }
+
+    fn series_item(app: Option<&str>, action: Option<&str>) -> LauncherItem {
+        let mut item = item_at("series", "KeyM", "");
+        item.target_type = TargetType::KobitoAction;
+        item.target = TargetPath {
+            kind: "kobito-action".into(),
+            app: app.map(str::to_string),
+            action: action.map(str::to_string),
+            ..Default::default()
+        };
+        item
+    }
+
+    #[test]
+    fn series_actions_need_an_app_id_and_an_action_but_no_launch_info() {
+        let saved = LauncherConfig::default();
+        let mut edited = saved.clone();
+        // 起動情報が無くても保存できる（押したときに知らせる）。
+        edited.items.push(series_item(Some("nowhere"), Some("new")));
+        assert!(validate_config(&edited, &saved).is_ok());
+        for (app, action) in [(None, Some("new")), (Some("Bad ID"), Some("new")), (Some("memo"), None), (Some("memo"), Some(" "))] {
+            edited.items[0] = series_item(app, action);
+            assert_eq!(
+                validate_config(&edited, &saved).unwrap_err(),
+                "applauncher-error:invalid-series-action"
+            );
+        }
     }
 
     #[test]
