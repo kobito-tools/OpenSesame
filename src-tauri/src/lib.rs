@@ -1,3 +1,4 @@
+mod command;
 mod favicon;
 mod frontmost;
 mod icons;
@@ -132,6 +133,7 @@ async fn select_target(
         target: TargetPath {
             kind: "path".into(),
             value: path.to_string_lossy().into_owned(),
+            working_dir: None,
         },
         icon: TargetIcon {
             kind: "system".into(),
@@ -175,6 +177,7 @@ async fn create_website(
         target: TargetPath {
             kind: "url".into(),
             value: url,
+            working_dir: None,
         },
         icon: TargetIcon {
             kind: "system".into(),
@@ -182,6 +185,64 @@ async fn create_website(
         },
         hide_when_frontmost: false,
     })
+}
+
+/// コマンドもファイル選択を経ないので、入力から登録項目を組み立てる。
+/// 表示名を省略したときはコマンドの最初の語を使う。
+#[tauri::command]
+fn create_command(
+    command: String,
+    name: Option<String>,
+    working_dir: Option<String>,
+    key: Option<String>,
+    shift: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<LauncherItem, String> {
+    let command = command::normalize(&command)?;
+    let working_dir = command::normalize_working_dir(working_dir.as_deref());
+    if let Some(dir) = &working_dir {
+        if !Path::new(dir).is_dir() {
+            return Err(error("missing-working-dir", dir));
+        }
+    }
+    let name = name
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| command_name(&command));
+    let shift = shift.unwrap_or(false);
+    let key = match key {
+        Some(requested) => {
+            validate_key(&requested)?;
+            requested
+        }
+        None => next_available_key(&state.config, shift)?,
+    };
+    Ok(LauncherItem {
+        id: Uuid::new_v4().to_string(),
+        target_type: TargetType::Command,
+        name,
+        key,
+        shift,
+        target: TargetPath {
+            kind: "command".into(),
+            value: command,
+            working_dir,
+        },
+        icon: TargetIcon {
+            kind: "system".into(),
+            value: None,
+        },
+        hide_when_frontmost: false,
+    })
+}
+
+/// コマンドの作業フォルダを選ぶ。登録はせず、選んだパスを返すだけ。
+#[tauri::command]
+async fn pick_folder() -> Option<String> {
+    rfd::AsyncFileDialog::new()
+        .pick_folder()
+        .await
+        .map(|selection| selection.path().to_string_lossy().into_owned())
 }
 
 /// サイトのアイコンが変わったときや、登録時に取れなかったときに取り直す。
@@ -304,7 +365,7 @@ fn runtime_info(state: State<'_, AppState>) -> RuntimeInfo {
 }
 
 /// 表示言語を切り替えられるよう、UIに出る失敗はコードで返してフロント側で翻訳する。
-fn error(code: &str, argument: &str) -> String {
+pub(crate) fn error(code: &str, argument: &str) -> String {
     if argument.is_empty() {
         format!("applauncher-error:{code}")
     } else {
@@ -354,6 +415,10 @@ fn validate_config(config: &LauncherConfig, previous: &LauncherConfig) -> Result
             }
             continue;
         }
+        if matches!(item.target_type, TargetType::Command) {
+            validate_command(item, previous)?;
+            continue;
+        }
         let already_registered = previous
             .items
             .iter()
@@ -361,6 +426,24 @@ fn validate_config(config: &LauncherConfig, previous: &LauncherConfig) -> Result
         if !already_registered && !Path::new(&item.target.value).exists() {
             return Err(error("missing-target", &item.target.value));
         }
+    }
+    Ok(())
+}
+
+/// コマンドそのものは動かすまで正しいか分からないので、1行であることだけ確かめる。
+/// 作業フォルダはパスと同じく、新しく指定したときだけ存在を確かめる。
+fn validate_command(item: &LauncherItem, previous: &LauncherConfig) -> Result<(), String> {
+    if command::normalize(&item.target.value).ok().as_deref() != Some(item.target.value.as_str()) {
+        return Err(error("invalid-command", ""));
+    }
+    let Some(dir) = &item.target.working_dir else {
+        return Ok(());
+    };
+    let already_registered = previous.items.iter().any(|saved| {
+        saved.id == item.id && saved.target.working_dir.as_deref() == Some(dir.as_str())
+    });
+    if !already_registered && !Path::new(dir).is_dir() {
+        return Err(error("missing-working-dir", dir));
     }
     Ok(())
 }
@@ -467,6 +550,16 @@ fn website_name(url: &str) -> String {
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
     let host = url_host(rest);
     host.strip_prefix("www.").unwrap_or(host).to_string()
+}
+
+/// 表示名を省略したときの名前。最初の語で、パスならファイル名の部分だけにする。
+fn command_name(command: &str) -> String {
+    command
+        .split_whitespace()
+        .next()
+        .and_then(|word| word.rsplit(['/', '\\']).next())
+        .unwrap_or(command)
+        .to_string()
 }
 
 fn display_name(path: &Path) -> String {
@@ -622,6 +715,8 @@ pub fn run() {
             save_config,
             select_target,
             create_website,
+            create_command,
+            pick_folder,
             refetch_website_icon,
             select_custom_icon,
             runtime_info,
@@ -698,6 +793,7 @@ mod tests {
             target: TargetPath {
                 kind: "path".into(),
                 value: "/".into(),
+                working_dir: None,
             },
             icon: TargetIcon {
                 kind: "system".into(),
@@ -718,6 +814,7 @@ mod tests {
             target: TargetPath {
                 kind: "path".into(),
                 value: path.into(),
+                working_dir: None,
             },
             icon: TargetIcon {
                 kind: "system".into(),
@@ -804,6 +901,54 @@ mod tests {
             "applauncher-error:duplicate-key:Shift+KeyA"
         );
     }
+    fn command_item(id: &str, command: &str, working_dir: Option<&str>) -> LauncherItem {
+        let mut item = item_at(id, "KeyC", command);
+        item.target_type = TargetType::Command;
+        item.target.kind = "command".into();
+        item.target.working_dir = working_dir.map(str::to_string);
+        item
+    }
+
+    #[test]
+    fn commands_skip_the_path_check_but_must_be_one_line() {
+        let saved = LauncherConfig::default();
+        let mut edited = saved.clone();
+        edited.items.push(command_item("cmd", "uv run app.py", None));
+        assert!(validate_config(&edited, &saved).is_ok());
+        edited.items[0].target.value = "echo a\necho b".into();
+        assert_eq!(
+            validate_config(&edited, &saved).unwrap_err(),
+            "applauncher-error:invalid-command"
+        );
+        edited.items[0].target.value = " ".into();
+        assert!(validate_config(&edited, &saved).is_err());
+    }
+
+    #[test]
+    fn a_new_working_dir_must_exist_but_a_saved_one_may_disappear() {
+        let saved = LauncherConfig::default();
+        let mut edited = saved.clone();
+        edited.items.push(command_item("cmd", "make", Some("/nonexistent/opensesame")));
+        assert_eq!(
+            validate_config(&edited, &saved).unwrap_err(),
+            "applauncher-error:missing-working-dir:/nonexistent/opensesame"
+        );
+        edited.items[0].target.working_dir = Some("/".into());
+        assert!(validate_config(&edited, &saved).is_ok());
+        let mut saved = LauncherConfig::default();
+        saved.items.push(command_item("cmd", "make", Some("/nonexistent/opensesame")));
+        let mut renamed = saved.clone();
+        renamed.items[0].name = "Build".into();
+        assert!(validate_config(&renamed, &saved).is_ok());
+    }
+
+    #[test]
+    fn command_name_is_the_first_word_without_its_folder() {
+        assert_eq!(command_name("uv run app.py"), "uv");
+        assert_eq!(command_name("/opt/homebrew/bin/btop --utf-force"), "btop");
+        assert_eq!(command_name(r"C:\Tools\run.bat"), "run.bat");
+    }
+
     #[test]
     fn activation_must_not_be_shift_only() {
         let mut config = LauncherConfig::default();

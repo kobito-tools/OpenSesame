@@ -114,7 +114,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
   /** 起動キー録音の状態。ホバー中に delete を押すと開始する。 */
   const recorder = { recording: false, pending: new Set<string>() };
 
-  const showStatus = (message: string, kind: "success" | "error" = "success") => {
+  const showStatus = (message: string, kind: "success" | "error" = "success", duration = 3600) => {
     const status = root.querySelector<HTMLElement>("[data-status]");
     if (!status) return;
     status.textContent = message;
@@ -122,7 +122,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     window.clearTimeout(statusTimer);
     statusTimer = window.setTimeout(() => {
       status.textContent = "";
-    }, 3600);
+    }, duration);
   };
 
   /** 保存できたかどうかを返す。失敗時は保存済みの設定へ戻す。 */
@@ -163,6 +163,29 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       const item = await invoke<LauncherItem>("create_website", {
         url,
         name: name || null,
+        key: key ?? null,
+        shift: back,
+      });
+      config.items.push(item);
+      return await save();
+    } catch (error) {
+      showStatus(translateError(error), "error");
+      return false;
+    }
+  };
+
+  /** 登録できたかどうかを返す。失敗時は入力欄を残して直せるようにする。 */
+  const addCommand = async (
+    command: string,
+    name: string,
+    workingDir: string,
+    key?: string,
+  ): Promise<boolean> => {
+    try {
+      const item = await invoke<LauncherItem>("create_command", {
+        command,
+        name: name || null,
+        workingDir: workingDir || null,
         key: key ?? null,
         shift: back,
       });
@@ -296,8 +319,11 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     });
     const path = document.createElement("span");
     path.className = "target-path";
-    path.textContent = item.target.value;
-    path.title = item.target.value;
+    const dir = item.type === "command" ? item.target.working_dir : undefined;
+    path.textContent = dir
+      ? t("item.commandIn", { command: item.target.value, dir })
+      : item.target.value;
+    path.title = path.textContent;
     detail.append(name, path);
     const select = keySelect(item.id, item.key, false, (key) => {
       if (key) item.key = key;
@@ -337,6 +363,11 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     if (offLayout(item.key)) rowActions.append(offLayoutBadge());
     if (item.type === "application") rowActions.append(hideToggle(item));
     if (item.type === "website") rowActions.append(refetch);
+    if (item.type === "command") {
+      const edit = createButton(t("button.editCommand"), "button compact");
+      edit.addEventListener("click", () => openPicker(undefined, item));
+      rowActions.append(edit);
+    }
     rowActions.append(iconButton, remove);
     row.append(detail, select, rowActions);
     return row;
@@ -355,10 +386,11 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
   const closePicker = () => root.querySelector(".picker-backdrop")?.remove();
 
   /**
-   * 空いているキーを押したときの選択肢。選ぶとOSの選択UIか操作一覧、URL入力へ進む。
-   * `code` を省くとURL入力から始め、空いているキーを自動で割り当てる。
+   * 空いているキーを押したときの選択肢。選ぶとOSの選択UIか操作一覧、URLやコマンドの入力へ進む。
+   * `code` を省くと `start` の入力欄から始め、空いているキーを自動で割り当てる。
+   * `start` に登録済みのコマンドを渡すと、その編集になる。
    */
-  const openPicker = (code?: string) => {
+  const openPicker = (code?: string, start: "website" | "command" | LauncherItem = "website") => {
     closePicker();
     const backdrop = document.createElement("div");
     backdrop.className = "picker-backdrop";
@@ -398,6 +430,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
           },
         ],
         ["picker.website", "picker.websiteDesc", paintWebsiteForm],
+        ["picker.command", "picker.commandDesc", () => paintCommandForm()],
       ];
       for (const [label, description, run] of choices) {
         const choice = document.createElement("button");
@@ -451,6 +484,20 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       card.append(title, list, footer);
     };
 
+    const field = (label: string, placeholder: string): [HTMLLabelElement, HTMLInputElement] => {
+      const wrapper = document.createElement("label");
+      wrapper.className = "picker-field";
+      const caption = document.createElement("span");
+      caption.textContent = label;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.placeholder = placeholder;
+      input.spellcheck = false;
+      input.autocapitalize = "off";
+      wrapper.append(caption, input);
+      return [wrapper, input];
+    };
+
     const paintWebsiteForm = () => {
       card.replaceChildren();
       const title = document.createElement("strong");
@@ -459,19 +506,6 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         : t("picker.website");
       const form = document.createElement("form");
       form.className = "picker-form";
-      const field = (label: string, placeholder: string): [HTMLLabelElement, HTMLInputElement] => {
-        const wrapper = document.createElement("label");
-        wrapper.className = "picker-field";
-        const caption = document.createElement("span");
-        caption.textContent = label;
-        const input = document.createElement("input");
-        input.type = "text";
-        input.placeholder = placeholder;
-        input.spellcheck = false;
-        input.autocapitalize = "off";
-        wrapper.append(caption, input);
-        return [wrapper, input];
-      };
       const [urlField, urlInput] = field(t("picker.websiteUrl"), "https://example.com");
       urlInput.required = true;
       const [nameField, nameInput] = field(t("picker.websiteName"), t("picker.websiteNameHint"));
@@ -503,8 +537,69 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       urlInput.focus();
     };
 
+    /** `editing` を渡すと、その登録済みコマンドを書き換える。 */
+    const paintCommandForm = (editing?: LauncherItem) => {
+      card.replaceChildren();
+      const title = document.createElement("strong");
+      title.textContent = editing
+        ? t("picker.commandEdit")
+        : code
+          ? t("picker.commandTitle", { key: displayKey(code) })
+          : t("picker.command");
+      const form = document.createElement("form");
+      form.className = "picker-form";
+      const [commandField, commandInput] = field(t("picker.commandLine"), t("picker.commandLineHint"));
+      commandInput.required = true;
+      const [dirField, dirInput] = field(t("picker.commandDir"), t("picker.commandDirHint"));
+      const pickDir = createButton(t("picker.commandDirPick"), "button compact");
+      pickDir.addEventListener("click", async () => {
+        const chosen = await invoke<string | null>("pick_folder");
+        if (chosen) dirInput.value = chosen;
+      });
+      const dirRow = document.createElement("div");
+      dirRow.className = "picker-field-row";
+      dirRow.append(dirInput, pickDir);
+      dirField.append(dirRow);
+      const [nameField, nameInput] = field(t("picker.commandName"), t("picker.commandNameHint"));
+      if (editing) {
+        commandInput.value = editing.target.value;
+        dirInput.value = editing.target.working_dir ?? "";
+        nameInput.value = editing.name;
+      }
+      const footer = document.createElement("div");
+      footer.className = "picker-footer";
+      const backButton = createButton(t(code ? "picker.back" : "picker.cancel"), "button compact");
+      backButton.addEventListener("click", code ? paintChoices : closePicker);
+      const submitLabel = t(editing ? "picker.commandSave" : "picker.websiteAdd");
+      const submit = createButton(submitLabel, "button compact primary");
+      submit.type = "submit";
+      footer.append(backButton, submit);
+      form.append(commandField, dirField, nameField, footer);
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const command = commandInput.value.trim();
+        if (!command) return;
+        const workingDir = dirInput.value.trim();
+        submit.disabled = true;
+        if (editing) {
+          // 保存に失敗したときは save が保存済みの設定へ戻すので、ここで書き換えてよい。
+          editing.target.value = command;
+          editing.target.working_dir = workingDir || undefined;
+          editing.name = nameInput.value.trim() || editing.name;
+          if (await save()) closePicker();
+          return;
+        }
+        const added = await addCommand(command, nameInput.value.trim(), workingDir, code);
+        if (added) closePicker();
+        else submit.disabled = false;
+      });
+      card.append(title, form);
+      commandInput.focus();
+    };
+
     if (code) paintChoices();
-    else paintWebsiteForm();
+    else if (start === "website") paintWebsiteForm();
+    else paintCommandForm(start === "command" ? undefined : start);
     root.append(backdrop);
     if (!code) backdrop.querySelector<HTMLInputElement>(".picker-field input")?.focus();
   };
@@ -564,6 +659,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     const apps = sortedItems.filter((item) => item.type === "application");
     const folders = sortedItems.filter((item) => item.type === "folder");
     const websites = sortedItems.filter((item) => item.type === "website");
+    const commands = sortedItems.filter((item) => item.type === "command");
     container.append(sectionLabel(t("section.window"), t("section.window.desc")));
     for (const action of sortedWindows) container.append(windowRow(action));
     container.append(sectionLabel(t("section.apps"), t("section.count", { count: apps.length })));
@@ -576,6 +672,10 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       sectionLabel(t("section.websites"), t("section.count", { count: websites.length })),
     );
     for (const item of websites) container.append(itemRow(item));
+    container.append(
+      sectionLabel(t("section.commands"), t("section.count", { count: commands.length })),
+    );
+    for (const item of commands) container.append(itemRow(item));
   };
 
   /**
@@ -842,7 +942,9 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     const addSite = createButton(t("button.addWebsite"));
     addFolder.addEventListener("click", () => void addTarget("folder"));
     addSite.addEventListener("click", () => openPicker());
-    actions?.append(addApp, addFolder, addSite);
+    const addCommandButton = createButton(t("button.addCommand"));
+    addCommandButton.addEventListener("click", () => openPicker(undefined, "command"));
+    actions?.append(addApp, addFolder, addSite, addCommandButton);
 
     shell.querySelector<HTMLElement>("[data-keyboard]")?.append(keyboardPreview());
     const items = shell.querySelector<HTMLElement>("[data-items]");
@@ -856,6 +958,10 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
   };
 
   paint();
+  // コマンドがすぐに失敗したときは、Rust側が設定画面を開いてから知らせてくる。
+  await listen<string>("launch-failed", ({ payload }) => {
+    showStatus(translateError(payload), "error", 15000);
+  });
   // 権限が付与されるとRust側が自動で監視を開始するので、案内の出し入れも追従させる。
   await listen<string | null>("input-monitor-status", ({ payload }) => {
     const next = payload ?? null;

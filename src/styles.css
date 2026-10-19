@@ -286,6 +286,8 @@ h2 { margin: 0; font-size: 15px; }
   background: var(--surface-strong); font-size: 13px; color: var(--ink); outline: 0;
 }
 .picker-field input:focus { border-color: rgba(79, 70, 229, .55); box-shadow: 0 0 0 3px var(--accent-soft); }
+.picker-field-row { display: flex; gap: 6px; align-items: center; }
+.picker-field-row input { flex: 1; min-width: 0; }
 
 /* ---------- ポップアップ ---------- */
 

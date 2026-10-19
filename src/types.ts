@@ -29,15 +29,17 @@ export interface TargetIcon {
 
 export interface LauncherItem {
   id: string;
-  type: "application" | "folder" | "website";
+  type: "application" | "folder" | "website" | "command";
   name: string;
   key: string;
   /** Shiftを押している間に出る裏盤面への割り当て。 */
   shift?: boolean;
   target: {
-    /** Webサイトは "url"、それ以外はファイルシステム上の "path"。 */
-    kind: "path" | "url";
+    /** Webサイトは "url"、コマンドは "command"、それ以外はファイルシステム上の "path"。 */
+    kind: "path" | "url" | "command";
     value: string;
+    /** コマンドを動かすフォルダ。省略時はホームフォルダ。 */
+    working_dir?: string;
   };
   icon: TargetIcon;
   /** アプリが既に前面にあるときは、開く代わりに隠す。 */
