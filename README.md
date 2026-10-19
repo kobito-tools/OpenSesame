@@ -44,10 +44,13 @@ xattr -dr com.apple.quarantine "/Applications/OpenSesame!.app"
 
 #### ソースから作る
 
-警告を出さずに入れたい場合は、このリポジトリをクローンして `OpenSesame-Setup.command` を実行します。手元で作ったアプリには、ダウンロードしたときに付く隔離の印が無いため、上の警告は出ません。
+警告を出さずに入れたい場合は、このリポジトリをクローンして、ターミナルで `./setup.sh` を実行します（Finder から `OpenSesame-Setup.command` をダブルクリックしても同じです）。手元で作ったアプリには、ダウンロードしたときに付く隔離の印が無いため、上の警告は出ません。
 
-- 必要なもの：Xcode Command Line Tools・Node.js 20 以降・Rust（足りないときは、Setup が入れ方を表示します）
-- できた `OpenSesame!.app` を、アプリケーションフォルダへ移動して起動します。
+- 必要なもの：Xcode Command Line Tools・Node.js 20 以降・Rust
+  - Rust が無いときは、公式の手順（rustup）で入れるかを尋ねます。
+  - Xcode Command Line Tools と Node.js が無いときは、入れ方を表示して止まります。
+- ビルドが終わると、`OpenSesame!.app` をアプリケーションフォルダへ移すかを尋ねます。すでにある場合は、置き換えてよいかを尋ねます。移さなかったときは、このフォルダにできた `OpenSesame!.app` を自分で移して起動します。
+- `./setup.sh --help` で使い方を、`./setup.sh --dry-run` で何をするかを（何も変えずに）確かめられます。何度実行しても大丈夫です。
 - 作り直した場合は、アクセシビリティの一覧から OpenSesame! を「－」で消して、追加し直してください（作るたびに署名が変わるため、以前の許可が効かなくなります）。
 
 #### アクセシビリティの許可
