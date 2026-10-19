@@ -59,12 +59,17 @@ pub enum TargetType {
     Application,
     Folder,
     Website,
+    /// シェルで1行のコマンドを動かす。`target.value` がコマンドそのもの。
+    Command,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TargetPath {
     pub kind: String,
     pub value: String,
+    /// コマンドを動かすフォルダ。コマンド以外では使わない。省略時はホームフォルダ。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

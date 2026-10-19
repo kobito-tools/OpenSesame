@@ -199,6 +199,112 @@ mod tests {
         fs::remove_dir_all(&dir).unwrap();
     }
 
+    fn temp_config(contents: &str) -> (PathBuf, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("opensesame-test-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        fs::write(&path, contents).unwrap();
+        (dir, path)
+    }
+
+    /// コマンドの種類を足す前（v4）の設定ファイルが、そのまま読めて退避もされないこと。
+    #[test]
+    fn reads_a_config_saved_before_commands_existed() {
+        let (dir, path) = temp_config(
+            r#"{
+                "version": 4,
+                "language": "en",
+                "activation": { "macos": ["ControlLeft", "AltLeft"], "windows": ["ControlLeft", "AltLeft"] },
+                "keyboard_layout": "keyboard-us",
+                "popup": { "position": "cursor-monitor-center" },
+                "window_actions": [],
+                "items": [
+                    { "id": "a", "type": "application", "name": "Mail", "key": "KeyM",
+                      "target": { "kind": "path", "value": "/System/Applications/Mail.app" },
+                      "icon": { "kind": "system" }, "hide_when_frontmost": true },
+                    { "id": "f", "type": "folder", "name": "Home", "key": "KeyH", "shift": true,
+                      "target": { "kind": "path", "value": "/Users" },
+                      "icon": { "kind": "custom", "value": "/icons/f.png" } },
+                    { "id": "w", "type": "website", "name": "docs.rs", "key": "KeyD",
+                      "target": { "kind": "url", "value": "https://docs.rs" },
+                      "icon": { "kind": "system" } }
+                ]
+            }"#,
+        );
+        let config = load_or_create(&path).unwrap();
+        assert_eq!(config.language, "en");
+        assert_eq!(config.items.len(), 3);
+        assert!(config.items.iter().all(|item| item.target.working_dir.is_none()));
+        assert!(config.items[0].hide_when_frontmost);
+        assert!(config.items[1].shift);
+        let names: Vec<String> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["config.json"]);
+        // 作業フォルダの無い項目は、書き戻しても元と同じ形のまま。
+        save(&path, &config).unwrap();
+        assert!(!fs::read_to_string(&path).unwrap().contains("working_dir"));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// v2 の設定ファイルも、ファイルから読んで現在の版へ移せること。
+    #[test]
+    fn reads_and_upgrades_a_v2_config_file() {
+        let (dir, path) = temp_config(
+            r#"{
+                "version": 2,
+                "activation": { "macos": ["LeftControl", "LeftOption"], "windows": ["LeftControl", "LeftAlt"] },
+                "popup": { "position": "cursor-monitor-center", "layout": "keyboard-us" },
+                "items": [
+                    { "id": "f", "type": "folder", "name": "Root", "key": "KeyR",
+                      "target": { "kind": "path", "value": "/" }, "icon": { "kind": "system" } }
+                ]
+            }"#,
+        );
+        let config = load_or_create(&path).unwrap();
+        assert_eq!(config.version, CONFIG_VERSION);
+        assert_eq!(config.keyboard_layout, "keyboard-us");
+        assert_eq!(config.items[0].name, "Root");
+        let saved: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["version"], CONFIG_VERSION);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn command_items_survive_a_save_and_load() {
+        use crate::model::{LauncherItem, TargetIcon, TargetPath, TargetType};
+        let (dir, path) = temp_config("{}");
+        let mut config = LauncherConfig::default();
+        config.items.push(LauncherItem {
+            id: "c".into(),
+            target_type: TargetType::Command,
+            name: "Notes".into(),
+            key: "KeyN".into(),
+            shift: false,
+            target: TargetPath {
+                kind: "command".into(),
+                value: "uv run notes.py".into(),
+                working_dir: Some("/tmp".into()),
+            },
+            icon: TargetIcon {
+                kind: "system".into(),
+                value: None,
+            },
+            hide_when_frontmost: false,
+        });
+        save(&path, &config).unwrap();
+        let raw: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(raw["items"][0]["type"], "command");
+        assert_eq!(raw["items"][0]["target"]["working_dir"], "/tmp");
+        let loaded = load_or_create(&path).unwrap();
+        assert!(matches!(loaded.items[0].target_type, TargetType::Command));
+        assert_eq!(loaded.items[0].target.value, "uv run notes.py");
+        assert_eq!(loaded.items[0].target.working_dir.as_deref(), Some("/tmp"));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn migrates_v2_config() {
         let mut raw: Value = serde_json::from_str(

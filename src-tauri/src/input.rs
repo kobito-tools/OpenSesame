@@ -368,6 +368,18 @@ fn find_window_action(
 }
 
 fn launch(app: AppHandle, item: LauncherItem) {
+    if matches!(item.target_type, TargetType::Command) {
+        // 起動できなかったことは設定画面の知らせ欄に出す。ふだんは閉じているので開いて見せる。
+        crate::command::launch(
+            &item.target.value,
+            item.target.working_dir.as_deref(),
+            move |message| {
+                let _ = app.emit("launch-failed", message);
+                show_settings(&app);
+            },
+        );
+        return;
+    }
     thread::spawn(move || {
         let toggles = item.hide_when_frontmost
             && matches!(item.target_type, TargetType::Application);
