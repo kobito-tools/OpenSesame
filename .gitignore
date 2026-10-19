@@ -11,3 +11,5 @@ src-tauri/icons/ios/
 !.env.example
 .claude/settings.local.json
 *.dmg
+# build.sh が作るアプリ
+OpenSesame!.app/
