@@ -203,6 +203,11 @@ h2 { margin: 0; font-size: 15px; }
 }
 .table-section-label strong { font-size: 12px; letter-spacing: .04em; }
 .table-section-label span { color: var(--ink-faint); font-size: 10px; }
+.unassigned-group > summary {
+  margin: 4px 0; padding: 7px 12px; border-radius: 10px;
+  color: var(--ink-soft); font-size: 12px; cursor: pointer; list-style-position: inside;
+}
+.unassigned-group > summary:hover { color: var(--accent); background: var(--accent-soft); }
 .item-row {
   display: grid; grid-template-columns: 44px minmax(200px, 1fr) 118px auto;
   align-items: center; gap: 14px; padding: 9px 12px; border-radius: 12px; transition: .18s ease;

@@ -56,6 +56,7 @@ const ja = {
 
   "section.window": "ウィンドウ整形",
   "section.window.desc": "キーを設定した操作だけがポップアップに表示されます",
+  "section.window.unassigned": "キーを割り当てていない操作（{count}件）",
   "section.apps": "アプリ",
   "section.folders": "フォルダ",
   "section.websites": "Webサイト",
@@ -227,6 +228,7 @@ const en: Record<MessageKey, string> = {
 
   "section.window": "Window layouts",
   "section.window.desc": "Only actions with a key appear in the popup",
+  "section.window.unassigned": "Actions without a key ({count})",
   "section.apps": "Applications",
   "section.folders": "Folders",
   "section.websites": "Websites",
