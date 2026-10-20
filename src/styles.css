@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
     "Hiragino Sans", "Noto Sans JP", sans-serif;
   font-synthesis: none;
@@ -312,8 +312,8 @@ h2 { margin: 0; font-size: 15px; }
  */
 .popup-body { min-width: 100%; background: transparent; overflow: hidden; }
 /*
- * ウィンドウ背面にはNSVisualEffectViewのぼかしが入っている。その上に明るい面を
- * 一枚重ねることで、ダークモードでも壁紙が明るくても字が読める状態を保つ。
+ * ウィンドウ背面にはNSVisualEffectViewのぼかしが入っている。その上に外観に合わせた
+ * 面を一枚重ねることで、壁紙の明るさによらず字が読める状態を保つ（ダークは末尾）。
  * 角丸はRust側のPOPUP_CORNER_RADIUSと揃えること。
  */
 .popup-body #app {
@@ -519,4 +519,80 @@ button.keyboard-key { cursor: pointer; }
 .startup-message pre {
   margin: 0; padding: 12px; border-radius: 10px; background: rgba(23, 33, 58, .06);
   white-space: pre-wrap; word-break: break-all; font-size: 12px; user-select: text;
+}
+
+/*
+ * ダークモード。Mac の外観に合わせ、設定画面もパネルも暗い面に切り替える。
+ * ウィンドウ背面のぼかしも外観に合わせて暗くなるので、白の重ねを暗い色に置き換える。
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e7eaf2;
+    --ink-soft: #b3bacb;
+    --ink-faint: #848ca0;
+    --accent: #a5b4fc;
+    --accent-soft: rgba(129, 140, 248, .18);
+    --danger: #fb7185;
+    --surface: rgba(38, 42, 54, .82);
+    --surface-strong: rgba(48, 53, 67, .92);
+    --surface-quiet: rgba(38, 42, 54, .6);
+    --line: rgba(255, 255, 255, .12);
+    --line-soft: rgba(255, 255, 255, .07);
+    --shadow: 0 18px 50px rgba(0, 0, 0, .35);
+  }
+  .settings-body {
+    background:
+      radial-gradient(circle at 12% -4%, rgba(99, 102, 241, .2), transparent 42%),
+      radial-gradient(circle at 96% 8%, rgba(56, 189, 248, .12), transparent 38%),
+      rgba(22, 25, 32, .9);
+  }
+  .permission-card { background: var(--surface); border-color: rgba(251, 113, 133, .35); }
+  .permission-note { border-color: rgba(251, 191, 36, .3); background: rgba(251, 191, 36, .1); }
+  .permission-note strong, .activation-note { color: #fcd34d; }
+  .permission-note.error { border-color: rgba(251, 113, 133, .35); background: rgba(251, 113, 133, .12); }
+  .segmented { background: rgba(255, 255, 255, .06); }
+  .segment:hover { background: rgba(255, 255, 255, .08); }
+  .segment.active { background: rgba(255, 255, 255, .14); box-shadow: 0 2px 8px rgba(0, 0, 0, .35); }
+  .button:hover { border-color: rgba(165, 180, 252, .4); }
+  .item-row:hover { background: rgba(255, 255, 255, .05); }
+  .item-row.highlight { box-shadow: inset 0 0 0 1px rgba(165, 180, 252, .45); }
+  .built-in-badge { border-color: rgba(125, 211, 252, .3); color: #7dd3fc; background: rgba(56, 189, 248, .12); }
+  .off-layout-badge { border-color: rgba(251, 191, 36, .35); color: #fcd34d; background: rgba(251, 191, 36, .12); }
+  [data-status][data-kind="success"] { color: #34d399; }
+  .picker-backdrop { background: rgba(0, 0, 0, .45); }
+  .picker { border-color: rgba(255, 255, 255, .1); background: rgba(34, 38, 49, .97); box-shadow: 0 30px 80px rgba(0, 0, 0, .55); }
+  .picker-choice, .picker-action { background: rgba(255, 255, 255, .05); }
+  .picker-choice:hover, .picker-action:hover {
+    border-color: rgba(165, 180, 252, .5); background: rgba(255, 255, 255, .1); box-shadow: 0 8px 20px rgba(0, 0, 0, .35);
+  }
+  .startup-message pre { background: rgba(255, 255, 255, .06); }
+
+  .popup-body #app {
+    background: linear-gradient(160deg, rgba(44, 48, 60, .72), rgba(26, 29, 37, .62));
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 0, 0, .45),
+      inset 0 0 0 2px rgba(255, 255, 255, .12);
+  }
+  .popup-body .window-action-icon { border-color: rgba(165, 180, 252, .35); background: rgba(255, 255, 255, .08); }
+  .popup-body .window-diagram { border-color: rgba(165, 180, 252, .85); }
+  .popup-body .window-diagram::after { background: rgba(165, 180, 252, .8); }
+
+  .keyboard-key {
+    border-color: rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .07);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .08);
+  }
+  .keyboard-key.assigned {
+    border-color: rgba(165, 180, 252, .4); background: rgba(255, 255, 255, .12);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, .4), inset 0 1px 0 rgba(255, 255, 255, .12);
+  }
+  .keyboard-key.reserved { border-color: rgba(125, 211, 252, .55); background: rgba(56, 189, 248, .16); color: #7dd3fc; }
+  .keyboard-key:hover { border-color: rgba(165, 180, 252, .55); background: rgba(255, 255, 255, .14); }
+  .keyboard-key > kbd { color: rgba(231, 234, 242, .62); }
+  .keyboard-back .keyboard-key:not(.assigned):not(.reserved),
+  .back-side .keyboard-key:not(.assigned):not(.reserved) {
+    border-color: rgba(251, 191, 36, .22); background: rgba(217, 119, 6, .14);
+  }
+  .layer-badge { color: #fcd34d; background: rgba(251, 191, 36, .2); }
+  /* 小人の手足は暗い線なので、暗い面では淡い縁取りで形を保つ。 */
+  .kobito svg { filter: drop-shadow(0 0 1px rgba(255, 255, 255, .55)) drop-shadow(0 3px 5px rgba(0, 0, 0, .4)); }
 }
