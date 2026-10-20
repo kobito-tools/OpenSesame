@@ -40,16 +40,19 @@ button, input, select { font: inherit; color: inherit; }
   -webkit-backdrop-filter: blur(30px) saturate(150%);
 }
 
+/*
+ * 設定画面はページ全体を縦に動かす。一覧だけを動かす作りだと、窓が低いときや
+ * 権限の案内が出ているときに一覧が数行しか見えなくなるため。
+ */
+.settings-body #app { overflow-y: auto; }
 .settings-shell {
-  height: 100%;
+  min-height: 100%;
   max-width: 1280px;
   margin: 0 auto;
   padding: 16px 24px 8px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  /* 権限カードなどで縦が足りなくなったとき、下の一覧が隠れないようにする。 */
-  overflow-y: auto;
 }
 
 .settings-header { display: flex; justify-content: space-between; gap: 22px; align-items: center; }
@@ -137,17 +140,21 @@ h1 { margin: 0; font-size: 21px; letter-spacing: -.03em; }
 /* 上半分にキーボード配列、下半分に種類別リスト。 */
 .settings-split {
   flex: 1;
-  min-height: 0;
   display: grid;
-  /* キーボードは潰さずに最低限の高さを確保し、余りをリストへ渡す。 */
-  grid-template-rows: auto minmax(220px, 1fr);
-  min-height: 572px;
+  /* 一覧は中身の高さのまま伸ばし、ページ全体のスクロールで見せる。 */
+  grid-template-rows: auto 1fr;
   gap: 12px;
 }
 .split-pane {
   min-height: 0; display: flex; flex-direction: column;
   border: 1px solid var(--line); border-radius: 18px;
-  background: var(--surface); box-shadow: var(--shadow); overflow: hidden;
+  background: var(--surface); box-shadow: var(--shadow); overflow: clip;
+}
+/* 一覧を下へ送っても、追加のボタンが手の届く所に残るようにする。 */
+.list-pane > .pane-heading {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--surface-strong);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
 }
 /* キーボードはポップアップの見た目をそのまま再現するため、白い枠を持たせない。 */
 .keyboard-pane {
@@ -165,7 +172,7 @@ h2 { margin: 0; font-size: 15px; }
   flex: 1; padding: 2px; overflow-x: auto; overflow-y: hidden;
   min-height: calc(var(--key-size) * 5 + 28px);
 }
-.items-table { flex: 1; min-height: 0; padding: 6px 8px 12px; overflow-y: auto; }
+.items-table { flex: 1; padding: 6px 8px 12px; }
 
 .button-row, .row-actions { display: flex; align-items: center; gap: 8px; }
 .activation-note { margin: 0; color: #92610a; font-size: 11px; }
@@ -496,7 +503,6 @@ button.keyboard-key { cursor: pointer; }
 
 @media (max-height: 720px) {
   .settings-shell { padding: 12px 18px 6px; gap: 8px; }
-  .settings-split { grid-template-rows: auto minmax(180px, 1fr); min-height: 480px; }
   .segment small { display: none; }
   .subtitle { display: none; }
   .keyboard-pane { --key-size: 46px; }
