@@ -928,7 +928,8 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
 
   const paint = () => {
     const keyboardScroll = root.querySelector<HTMLElement>("[data-keyboard]")?.scrollLeft ?? 0;
-    const listScroll = root.querySelector<HTMLElement>("[data-items]")?.scrollTop ?? 0;
+    // 設定画面はページ全体が縦に動くので、描き直しの前後で位置を保つ。
+    const pageScroll = root.scrollTop;
     root.replaceChildren();
     const shell = document.createElement("main");
     shell.className = "settings-shell";
@@ -1043,8 +1044,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
 
     const keyboard = root.querySelector<HTMLElement>("[data-keyboard]");
     if (keyboard) keyboard.scrollLeft = keyboardScroll;
-    const list = root.querySelector<HTMLElement>("[data-items]");
-    if (list) list.scrollTop = listScroll;
+    root.scrollTop = pageScroll;
   };
 
   paint();
