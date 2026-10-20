@@ -110,6 +110,8 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
 
   /** 表示中の盤面。真なら裏盤面（Shift）で、キーボード図も一覧もこちらに揃える。 */
   let back = false;
+  /** キーの無い組み込みのウィンドウ整形を広げて見せるか。描き直しても保つ。 */
+  let showUnassignedWindows = false;
   const onLayer = (entry: { shift?: boolean }) => (entry.shift ?? false) === back;
 
   /** 起動キー録音の状態。ホバー中に delete を押すと開始する。 */
@@ -745,7 +747,22 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     const commands = sortedItems.filter((item) => item.type === "command");
     const seriesActions = sortedItems.filter((item) => item.type === "kobito-action");
     container.append(sectionLabel(t("section.window"), t("section.window.desc")));
-    for (const action of sortedWindows) container.append(windowRow(action));
+    // キーの無い組み込みの操作は数が多く、登録したものを下へ押し出すので畳んでおく。
+    const unassignedWindows = sortedWindows.filter((binding) => !binding.key);
+    for (const action of sortedWindows) if (action.key) container.append(windowRow(action));
+    if (unassignedWindows.length > 0) {
+      const group = document.createElement("details");
+      group.className = "unassigned-group";
+      group.open = showUnassignedWindows;
+      group.addEventListener("toggle", () => {
+        showUnassignedWindows = group.open;
+      });
+      const summary = document.createElement("summary");
+      summary.textContent = t("section.window.unassigned", { count: unassignedWindows.length });
+      group.append(summary);
+      for (const action of unassignedWindows) group.append(windowRow(action));
+      container.append(group);
+    }
     container.append(sectionLabel(t("section.apps"), t("section.count", { count: apps.length })));
     for (const item of apps) container.append(itemRow(item));
     container.append(
