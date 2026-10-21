@@ -1,6 +1,6 @@
 # OpenSesame!
 
-<img src="src-tauri/icons/128x128@2x.png" width="96" align="right" alt="">
+<img src="kobito/icon-1024.png" width="96" align="right" alt="">
 
 OpenSesame! は、キーを押している間だけ表示される macOS / Windows 用のランチャーです。
 
@@ -46,7 +46,7 @@ xattr -dr com.apple.quarantine "/Applications/OpenSesame!.app"
 
 #### ソースから作る
 
-警告を出さずに入れたい場合は、このリポジトリをクローンして、ターミナルで `./setup.sh` を実行します（Finder から `OpenSesame-Setup.command` をダブルクリックしても同じです）。手元で作ったアプリには、ダウンロードしたときに付く隔離の印が無いため、上の警告は出ません。
+警告を出さずに入れたい場合は、このリポジトリをクローンして、ターミナルで `./setup.sh` を実行します（Finder から `Setup.command` をダブルクリックしても同じです）。手元で作ったアプリには、ダウンロードしたときに付く隔離の印が無いため、上の警告は出ません。
 
 - 必要なもの：Xcode Command Line Tools・Node.js 20 以降・Rust
   - Rust が無いときは、公式の手順（rustup）で入れるかを尋ねます。
@@ -226,7 +226,7 @@ OpenSesame! は、起動するたびに、自分の起動のしかたと見せ�
 - 画面を開かずに書き出すだけのときは、`OpenSesame!.app/Contents/MacOS/OpenSesame --write-launch-info` を実行します。書き出してすぐ終わります。
 - 書き出すのは起動のしかたと見せ方だけで、設定や登録した項目は書きません。
 - 書き出さずに、同じ内容を画面（標準出力）に出すだけのときは `--metadata` を付けます。
-- リポジトリの直下の `kobito-app.json` は、kobito シリーズのアプリであることを示す目印です（アプリの形で配るので `"kind": "native"`）。
+- リポジトリの直下の `kobito-app.json` は、kobito シリーズのアプリであることを示す目印で、`kobito/` にアイコン（`icon.svg`・`icon-1024.png`）を置いています（アプリの形で配るので `"kind": "native"`。決まりは `docs/kobito-spec/APP_PACKAGE.md`）。
 
 ## プライバシー
 
