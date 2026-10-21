@@ -766,6 +766,8 @@ pub fn run() {
     // `--write-launch-info` のときは、ここで書いて終わる。下の二重起動の処理より先に呼ぶので、
     // 動いている OpenSesame! を終わらせない。
     series::exit_if_only_writing_launch_info();
+    // `--metadata` のときは、名乗りを出すだけで終わる（何も書かず、動いている方も終わらせない）。
+    series::exit_if_only_printing_metadata();
     // 他の版と並んで動くとキーフックが二重になるので、ウィンドウを作る前に片付ける。
     instance::take_over_or_exit();
     tauri::Builder::default()

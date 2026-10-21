@@ -21,6 +21,9 @@ pub const APP_NAME: &str = "OpenSesame!";
 
 /// この引数で起動したら、起動情報だけを書いて終わる（`setup.sh` から呼ぶ）。
 pub const WRITE_LAUNCH_INFO_FLAG: &str = "--write-launch-info";
+/// この引数で起動したら、名乗り（起動情報と同じ JSON）を標準出力に出すだけで終わる。
+/// 何も書かず、何も起動しない（シリーズの決まり：kobito-workspace の docs/APP_PACKAGE.md）。
+pub const METADATA_FLAG: &str = "--metadata";
 
 /// PC 固有領域の `kobito-tools` フォルダ。
 pub fn config_dir() -> Option<PathBuf> {
@@ -76,15 +79,21 @@ pub fn launch_record(executable: &Path) -> Value {
     })
 }
 
-/// 自分の起動情報を書く。起動のたびに呼ぶ（`.app` を移しても追いつくように）。
-pub fn write_launch_info() -> Result<PathBuf, String> {
+/// 自分の起動情報の JSON（`--write-launch-info` が書くものと、`--metadata` が出すものは同じ）。
+fn launch_record_json() -> Result<Vec<u8>, String> {
     let executable = std::env::current_exe()
         .map_err(|error| format!("実行ファイルの場所が分かりません: {error}"))?;
-    let dir = apps_dir().ok_or_else(|| "起動情報の置き場所が分かりません".to_string())?;
-    let path = dir.join(format!("{APP_ID}.json"));
     let mut bytes = serde_json::to_vec_pretty(&launch_record(&executable))
         .map_err(|error| format!("起動情報を変換できません: {error}"))?;
     bytes.push(b'\n');
+    Ok(bytes)
+}
+
+/// 自分の起動情報を書く。起動のたびに呼ぶ（`.app` を移しても追いつくように）。
+pub fn write_launch_info() -> Result<PathBuf, String> {
+    let bytes = launch_record_json()?;
+    let dir = apps_dir().ok_or_else(|| "起動情報の置き場所が分かりません".to_string())?;
+    let path = dir.join(format!("{APP_ID}.json"));
     write_atomic(&path, &bytes)?;
     Ok(path)
 }
@@ -132,6 +141,24 @@ pub fn exit_if_only_writing_launch_info() {
     match write_launch_info() {
         Ok(path) => {
             println!("{}", path.display());
+            std::process::exit(0);
+        }
+        Err(message) => {
+            eprintln!("{message}");
+            std::process::exit(1);
+        }
+    }
+}
+
+/// `--metadata` で起動したときは、名乗りを標準出力に出してすぐ終わる。何も書かない。
+/// `exit_if_only_writing_launch_info` と同じく、二重起動を防ぐ処理より先に呼ぶこと。
+pub fn exit_if_only_printing_metadata() {
+    if !std::env::args().skip(1).any(|arg| arg == METADATA_FLAG) {
+        return;
+    }
+    match launch_record_json() {
+        Ok(bytes) => {
+            let _ = std::io::stdout().write_all(&bytes);
             std::process::exit(0);
         }
         Err(message) => {
@@ -368,6 +395,36 @@ pub(crate) mod tests {
             json!(["/Applications/OpenSesame!.app/Contents/MacOS/OpenSesame"])
         );
         assert!(record.get("embed").is_none());
+    }
+
+    /// 目印（リポジトリの直下の kobito-app.json。シリーズの決まり：APP_PACKAGE.md）の形と、名乗りとのそろい。
+    #[test]
+    fn the_marker_names_this_app_as_a_native_series_app() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        let path = root.join("kobito-app.json");
+        assert!(fs::metadata(&path).unwrap().len() <= 64 * 1024);
+        let marker: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(marker["format"], "kobito-app");
+        assert_eq!(marker["v"], 1);
+        assert_eq!(marker["contracts"], 1);
+        assert_eq!(marker["app"], APP_ID);
+        assert_eq!(marker["name"], APP_NAME);
+        assert_eq!(marker["name_en"], APP_NAME);
+        // .app で配るので launch.py を持たない。登録は setup.sh と --write-launch-info。
+        assert_eq!(marker["kind"], "native");
+        assert!(marker.get("entry").is_none());
+        assert_eq!(marker["setup"], "setup.sh");
+        assert!(root.join("setup.sh").is_file());
+        assert_eq!(marker["repository"], "kobito-tools/OpenSesame");
+        assert_eq!(marker["platforms"], json!(["macos", "windows"]));
+        for key in ["description", "description_en"] {
+            assert!(!marker[key].as_str().unwrap().trim().is_empty(), "{key}");
+        }
+        let config: Value = serde_json::from_str(
+            &fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(marker["bundle_id"], config["identifier"]);
     }
 
     #[test]
