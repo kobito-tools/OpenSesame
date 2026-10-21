@@ -6,7 +6,7 @@ OpenSesame! は、キーを押している間だけ表示される macOS / Windo
 
 起動キー（初期設定では macOS は左 Control + 左 Option、Windows は左 Ctrl + 左 Alt）を押している間、キーボード型のパネルが表示されます。そのまま割り当てたキーを押すと、アプリケーションやフォルダ、Webサイトを開いたり、コマンドを実行したり、前面のウィンドウを画面の左半分・右半分などに配置したりできます。
 
-kobito シリーズの1つです。連携は [kobito-workspace](https://github.com/kobito-tools/kobito-workspace) を参照してください。
+kobito シリーズの1つです。ほかのアプリとは、約束（`docs/kobito-spec/CONTRACTS.md`）のデータの形だけでつながります。シリーズについては [kobito-tools](https://github.com/kobito-tools) を参照してください。
 
 ![デモ](docs/images/demo.gif)
 
@@ -133,7 +133,7 @@ kobito シリーズのアプリは、外から呼べる操作（「新しいメ�
 - 一覧に何も出ないときは、シリーズのアプリを一度起動するか、そのアプリの `setup.sh` を動かしてください。起動情報が書き出されると並びます。
 - 設定に覚えるのは、アプリの ID と操作の ID だけです。キーを押すたびに、そのときの起動情報を読み直して開きます。そのため、アプリのフォルダを移したり、アプリを更新したりしても、割り当てはそのまま使えます。
 - 操作の中の「今日」は、キーを押した日の日付になります。
-- 操作は、アプリの単体のウインドウで開きます（アプリがすでに起動していれば、そのアプリが受け取ります）。kobito-workspace の中に表示しているアプリへは届けません。
+- 操作は、アプリの単体のウインドウで開きます（アプリがすでに起動していれば、そのアプリが受け取ります）。ほかのアプリの中に表示されているアプリへは届けません。
 - アプリを消した、またはアプリがその操作を名乗らなくなったときは、キーを押すと設定画面が開いて、知らせ欄に出ます。
 
 ### 裏盤面（Shift）を使う
@@ -220,7 +220,7 @@ Control、Option（Alt）、Command（Windows キー）、Shift のうち最大 
 
 ## kobito シリーズとのつながり
 
-OpenSesame! は、起動するたびに、自分の起動のしかたと見せ方（名前・色・アイコン）を「起動情報」として PC の中に書き出します。シリーズのほかのアプリは、これを読んで OpenSesame! を起動ボタンとして並べます。OpenSesame! はユーティリティなので、kobito-workspace の中には表示しません。
+OpenSesame! は、起動するたびに、自分の起動のしかたと見せ方（名前・色・アイコン）を「起動情報」として PC の中に書き出します。シリーズのほかのアプリは、これを読んで OpenSesame! を起動ボタンとして並べます。OpenSesame! はユーティリティなので、ほかのアプリの中には表示しません。
 
 - 置き場所：macOS は `~/Library/Application Support/kobito-tools/apps/opensesame.json`、Windows は `%APPDATA%\kobito-tools\apps\opensesame.json`
 - 画面を開かずに書き出すだけのときは、`OpenSesame!.app/Contents/MacOS/OpenSesame --write-launch-info` を実行します。書き出してすぐ終わります。

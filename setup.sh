@@ -1,6 +1,6 @@
 #!/bin/zsh
 # OpenSesame! を、この PC で使える状態にする（macOS）。
-# 決まり（引数・終了コード・する順番）は kobito-workspace の docs/SETUP.md に従う。
+# 決まり（引数・終了コード・する順番）は docs/kobito-spec/SETUP.md に従う。
 set -uo pipefail
 cd "${0:A:h}"
 
