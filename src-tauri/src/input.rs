@@ -395,7 +395,7 @@ fn launch(app: AppHandle, item: LauncherItem) {
 }
 
 /// 押された時点の起動情報を読み直し、`{today}` を置き換えた URL を、起動のコマンドの
-/// 後ろに足してシェルを通さずに動かす（④の決まり）。workspace の中で表示中のアプリへは届けず、
+/// 後ろに足してシェルを通さずに動かす（④の決まり）。ほかのアプリの中に表示されているアプリへは届けず、
 /// アプリの単体のウインドウで開く。見つからない・すぐに失敗したときは、コマンドと同じく知らせる。
 fn launch_series_action(app: AppHandle, item: &LauncherItem) {
     let notify = move |message: String| {
