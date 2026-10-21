@@ -12,6 +12,12 @@ OpenSesame! の中身の構造、ビルド方法、配布手順をまとめて�
 
 ```
 .
+├── kobito-app.json            # kobito シリーズの目印（下の「自分の起動情報を書く」）
+├── kobito/                    # アイコンの元 icon.svg と、その 1024px の書き出し icon-1024.png（シリーズの決まった場所）
+├── setup.sh                   # 初期設定（macOS）。共通の手順 docs/kobito-spec/setup.zsh を読み込む
+├── Setup.command              # setup.sh を Finder から動かす入口
+├── build.sh                   # 手元で使う OpenSesame!.app を作る（macOS）
+├── scripts/make-icons.sh      # kobito/icon.svg から、icon-1024.png と src-tauri/icons/ を作り直す
 ├── index.html                 # 設定画面・ポップアップ共通のエントリ
 ├── src/                       # フロントエンド
 │   ├── main.ts                # ウィンドウのラベルで設定画面かポップアップかを振り分け
@@ -35,12 +41,12 @@ OpenSesame! の中身の構造、ビルド方法、配布手順をまとめて�
 │   │   ├── storage.rs         # 設定の読み書きと移行
 │   │   ├── icons.rs           # アイコンのキャッシュ
 │   │   └── model.rs           # 設定ファイルの構造
-│   ├── icons/                 # アプリアイコン（source.svg が元データ。128x128@2x.png は起動情報のアイコンとして .app に入る）
+│   ├── icons/                 # Tauri が使うアプリアイコン（scripts/make-icons.sh が kobito/icon.svg から作る）
 │   ├── capabilities/          # フロントエンドに許可するTauri API
 │   ├── Info.plist             # macOS用の追加項目（Apple Eventsの説明文）
 │   └── tauri.conf.json
 ├── .github/workflows/         # CI と リリースビルド
-└── docs/
+└── docs/                      # この文書と、シリーズの規格の写し kobito-spec/（手で書き換えない）
 ```
 
 ## 開発環境
@@ -62,7 +68,7 @@ npm run tauri dev
 npm run tauri build
 ```
 
-手元で使う `.app` だけを作る場合（macOS）は、`./build.sh` を実行します。`npm ci` と `tauri build --bundles app` を行い、このフォルダ直下に `OpenSesame!.app` を置きます。`OpenSesame-Setup.command` は、これを Finder からダブルクリックで動かすための入口です。
+手元で使う `.app` だけを作る場合（macOS）は、`./build.sh` を実行します。`npm ci` と `tauri build --bundles app` を行い、このフォルダ直下に `OpenSesame!.app` を置きます。ソースから使う人向けの入口は `setup.sh` です（道具の確かめ・ビルド・アプリケーションフォルダへ移すかの確認・起動情報の書き出し・許可と起動の案内。`--yes`・`--dry-run`・`--help` を受け付けます）。引数の読み方・表示・尋ね方は、シリーズ共通の `docs/kobito-spec/setup.zsh` を読み込んで使います。`Setup.command` は `setup.sh` を Finder からダブルクリックで動かすための入口です。試すときは `KOBITO_APPLICATIONS_DIR` に一時フォルダを指すと、実際のアプリケーションフォルダに触れません。
 
 テスト:
 
@@ -85,7 +91,7 @@ cat "$KOBITO_CONFIG_DIR/apps/opensesame.json"
 
 GitHub Actions（`.github/workflows/release.yml`）が macOS（ユニバーサル版 `.dmg`）と Windows（`-setup.exe` / `.msi`）のインストーラーを作ります。
 
-1. `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json` の `version` を揃えて上げる
+1. `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`kobito-app.json` の `version` を揃えて上げる（`cargo test` が揃っているかを確かめます）
 2. コミットして `main` に push する
 3. バージョンのタグを付けて push する
 
@@ -106,13 +112,13 @@ macOS版は `bundle.macOS.signingIdentity` に `-` を指定し、ad-hoc 署名�
 
 ## アイコン
 
-元データは `src-tauri/icons/source.svg` です。PNG（1024×1024、透過）に書き出して `src-tauri/icons/source.png` を置き換え、次を実行します。
+元データは `kobito/icon.svg` です（シリーズの決まった場所）。書き換えたら、`npm ci` のあとで次を実行します。
 
 ```bash
-npm run tauri icon src-tauri/icons/source.png
+./scripts/make-icons.sh
 ```
 
-`tauri icon` は Android / iOS / Windowsストア向けの画像も生成しますが、本アプリはデスクトップのみなので、`tauri.conf.json` の `bundle.icon` に載っていないファイルは削除して構いません。`bundle.icon` には `.icns` と `.ico` を必ず含めてください。PNGだけを指定すると1サイズのみの `.icns` が生成され、Finderがアイコンを描けません。
+`tauri icon` で、`kobito/icon-1024.png`（1024×1024）と、`tauri.conf.json` の `bundle.icon` に載せている `src-tauri/icons/` の画像（`32x32.png`・`128x128.png`・`128x128@2x.png`・`icon.icns`・`icon.ico`）を作り直します。Android / iOS / Windowsストア向けの画像は写しません。`bundle.icon` には `.icns` と `.ico` を必ず含めてください。PNGだけを指定すると1サイズのみの `.icns` が生成され、Finderがアイコンを描けません。
 
 ## データ保存先
 
@@ -173,17 +179,17 @@ npm run tauri icon src-tauri/icons/source.png
   "command": ["/Applications/OpenSesame!.app/Contents/MacOS/OpenSesame"],
   "name_en": "OpenSesame!",
   "color": "gray",
-  "icon": { "file": "/Applications/OpenSesame!.app/Contents/Resources/kobito-icon.png", "glyph": "🔑" }
+  "icon": { "file": "/Applications/OpenSesame!.app/Contents/Resources/kobito/icon.svg", "glyph": "🔑" }
 }
 ```
 
 - 起動のたびに（`setup` の中で）書き直します。書けなくても起動は止めません。
 - `command` は今動いている実行ファイル（`std::env::current_exe()`）です。`embed` は書きません（ユーティリティアプリはほかのアプリの中に表示しない）。`actions` も持ちません。
-- アイコンの画像は、`tauri.conf.json` の `bundle.resources` で `icons/128x128@2x.png`（256×256）を `.app` の中に `kobito-icon.png` として入れ、実行ファイルの場所から求めます（macOS は `Contents/Resources/`、Windows は実行ファイルの隣）。リポジトリの画像を指さないのは、`.app` をアプリケーションフォルダへ移したあと、アプリがリポジトリの場所を知る手段が無いためです。画像が無い・256 KB を超えるときは `file` を書かず、`glyph` だけを名乗ります。
+- アイコンは、シリーズの決まりどおり `kobito/icon.svg` を指します。`tauri.conf.json` の `bundle.resources` でリポジトリの `kobito/icon.svg` を `.app` の中に同じ `kobito/icon.svg` として入れ、実行ファイルの場所から求めます（macOS は `Contents/Resources/`、Windows は実行ファイルの隣）。リポジトリの画像を指さないのは、`.app` をアプリケーションフォルダへ移したあと、アプリがリポジトリの場所を知る手段が無いためです。画像が無い・256 KB を超えるときは `file` を書かず、`glyph` だけを名乗ります。
 - 書くときは同じフォルダの一時ファイルに書いてから置き換えます。
-- `--write-launch-info` を付けて起動すると、書いてすぐ終わります（書いたパスを標準出力に出す。失敗したら終了コード 1）。`run()` の最初、二重起動の処理（`instance::take_over_or_exit`）より前で調べるので、動いている OpenSesame! を終わらせず、画面もキーの監視も始めません。`setup.sh` の手順4は、`.app` をアプリケーションフォルダへ移すかを決めたあとに、置いた場所の `.app` でこれを動かします。
+- `--write-launch-info` を付けて起動すると、書いてすぐ終わります（書いたパスを標準出力に出す。失敗したら終了コード 1）。`run()` の最初、二重起動の処理（`instance::take_over_or_exit`）より前で調べるので、動いている OpenSesame! を終わらせず、画面もキーの監視も始めません。`setup.sh` は、`.app` をアプリケーションフォルダへ移すかを決めたあとに、置いた場所の `.app` でこれを動かします。
 - `--metadata` を付けて起動すると、起動情報と同じ JSON を標準出力に出してすぐ終わります（何も書きません）。`--write-launch-info` と同じく、二重起動の処理より前で調べます（`series::exit_if_only_printing_metadata`）。
-- リポジトリの直下の `kobito-app.json` は、シリーズの決まり（`docs/kobito-spec/APP_PACKAGE.md`）の目印です。アプリの形で配るので `"kind": "native"` と書き、`launch.py` は持ちません（登録は今までどおり `setup.sh` と `--write-launch-info`）。アプリID・表示名は `series.rs`、`bundle_id` は `tauri.conf.json` の `identifier` とそろえます（`series::tests::the_marker_names_this_app_as_a_native_series_app` が確かめます）。
+- リポジトリの直下の `kobito-app.json` は、シリーズの決まり（`docs/kobito-spec/APP_PACKAGE.md`）の目印です。アプリの形で配るので `"kind": "native"` と書き、`launch.py` は持ちません（登録は `setup.sh` と `--write-launch-info`）。アプリID・表示名は `series.rs`、`bundle_id` は `tauri.conf.json` の `identifier`、`version` は `tauri.conf.json`・`Cargo.toml`・`package.json` とそろえます（`series::tests::the_marker_names_this_app_as_a_native_series_app` が、`package`・`tagline` と `kobito/` のアイコンも含めて確かめます）。リポジトリの形が決まりどおりかは、kobito シリーズの確かめの道具（`docs/kobito-spec/APP_PACKAGE.md` §12）で調べられます。
 
 ### ほかのアプリの操作を開く
 
