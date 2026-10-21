@@ -1,203 +1,102 @@
 #!/bin/zsh
-# OpenSesame! を、この PC で使える状態にする（macOS）。
-# 決まり（引数・終了コード・する順番）は docs/kobito-spec/SETUP.md に従う。
-set -uo pipefail
-cd "${0:A:h}"
+# OpenSesame! を、この Mac で使える状態にする（macOS だけ。Windows はインストーラーを使う）。
+# 決まりは docs/kobito-spec/SETUP.md。共通の手順は docs/kobito-spec/setup.zsh にある。
+# 何度動かしても安全。登録した項目・設定には触れず、書くのは起動情報だけ。sudo は使わない。
+
+source "${0:A:h}/docs/kobito-spec/setup.zsh" || exit 1
 
 APP_NAME="OpenSesame!"
-APP_DIR="/Applications"
+EXEC_NAME="OpenSesame"
+# 試すときは別のフォルダを指せる（実際のアプリケーションフォルダに触れないため）。
+APPLICATIONS_DIR="${KOBITO_APPLICATIONS_DIR:-/Applications}"
 RUSTUP_URL="https://sh.rustup.rs"
 
-usage() {
-  cat <<EOF
-使い方: ./setup.sh [--yes] [--dry-run] [--help]
+kobito_steps=(
+  "Xcode Command Line Tools・Node.js 20 以降があるかを確かめる（無ければ入れ方を表示して止まる）"
+  "Rust があるかを確かめる（無ければ、公式の手順 rustup で入れるかを尋ねる）"
+  "$APP_NAME.app をビルドする（数分かかる）"
+  "アプリケーションフォルダへ移すかを尋ねる（--yes では移さない）"
+  "起動情報を、置いた場所の .app で書き出す"
+  "許可（アクセシビリティ）の案内を表示する"
+)
+kobito_setup "$APP_NAME" "$@"
+# Finder から開いたときにも、Homebrew で入れた Node.js が見つかるようにする（build.sh と同じ）。
+path=($path /opt/homebrew/bin /usr/local/bin)
 
-$APP_NAME をソースからビルドして、この PC で使える状態にします（macOS だけ）。
-
-  --yes      尋ねる場面では、すべて既定の答えを選ぶ
-             （Rust が無ければ入れる。アプリケーションフォルダへは移さない）
-  --dry-run  何をするかを表示するだけで、何も変えない
-  --help     この使い方を表示する
-
-終了コード: 0 成功 / 1 失敗 / 2 引数の誤り
-EOF
+# 足りない道具は、--dry-run なら知らせて続ける（何をするかを最後まで見せるため）。
+missing() {
+  (( kobito_dry_run )) && { kobito_info "（--dry-run）$1。実際に動かすとここで止まります。"; return 0; }
+  kobito_fail "$1"
 }
 
-yes=0
-dry_run=0
-for arg in "$@"; do
-  case "$arg" in
-    --yes) yes=1 ;;
-    --dry-run) dry_run=1 ;;
-    --help|-h) usage; exit 0 ;;
-    *) echo "知らない引数です: $arg" >&2; usage >&2; exit 2 ;;
-  esac
-done
-
-if [[ "$(uname -s)" != Darwin ]]; then
-  echo "このスクリプトは macOS だけに対応しています。" >&2
-  exit 1
-fi
-
-# Finder から開いたときにも、rustup・Homebrew で入れた道具が見つかるようにする（build.sh と同じ）。
-export PATH="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-
-step() { echo ""; echo "▶ $*"; }
-info() { echo "  $*"; }
-would() { echo "  （dry-run）$*"; }
-
-# 尋ねる。$1 が問い、$2 が既定の答え（yes / no）。はいなら 0 を返す。
-ask() {
-  local question=$1 default=$2 reply hint
-  if (( yes )); then
-    info "$question → $([[ $default == yes ]] && echo はい || echo いいえ)（--yes の既定）"
-    [[ $default == yes ]]
-    return
-  fi
-  if [[ ! -t 0 ]]; then
-    info "$question → いいえ（入力を受け取れないため）"
-    return 1
-  fi
-  [[ $default == yes ]] && hint="[Y/n]" || hint="[y/N]"
-  read "reply?  $question $hint "
-  [[ -z $reply ]] && reply=$default
-  [[ $reply == [yY]* ]]
-}
-
-# 1. 必要な道具を確かめる
-step "1. 必要な道具を確かめます"
-stop=0
+kobito_step "必要な道具を確かめます"
 if xcode-select -p >/dev/null 2>&1; then
-  info "Xcode Command Line Tools … あり"
+  kobito_info "Xcode Command Line Tools: あります"
 else
-  info "Xcode Command Line Tools … ありません"
-  info "  → ターミナルで xcode-select --install を実行して入れてください"
-  stop=1
+  missing "Xcode Command Line Tools が見つかりません。ターミナルで xcode-select --install を実行して入れてから、もう一度動かしてください"
 fi
-if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
-  node_major=$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)
-  if (( node_major >= 20 )); then
-    info "Node.js … あり（$(node -v)）"
-  else
-    info "Node.js … 古いです（$(node -v)）。20 以降が必要です"
-    info "  → https://nodejs.org/ から入れ直すか、brew upgrade node"
-    stop=1
-  fi
+if (( $+commands[node] && $+commands[npm] )) && (( $(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || print 0) >= 20 )); then
+  kobito_info "Node.js: あります（$(node -v)）"
 else
-  info "Node.js … ありません"
-  info "  → https://nodejs.org/ から入れるか、brew install node"
-  stop=1
-fi
-has_rust=0
-if command -v cargo >/dev/null 2>&1; then
-  has_rust=1
-  info "Rust … あり（$(cargo --version)）"
-else
-  info "Rust … ありません（次の手順で、入れるかを尋ねます）"
-fi
-if (( stop )); then
-  if (( dry_run )); then
-    would "足りない道具があるため、実際に動かすとここで止まります"
-  else
-    echo "" >&2
-    echo "足りない道具を入れてから、もう一度 ./setup.sh を実行してください。" >&2
-    exit 1
-  fi
+  missing "Node.js 20 以降が見つかりません。https://nodejs.org/ から入れるか、brew install node（古いときは brew upgrade node）で入れてから、もう一度動かしてください"
 fi
 
-# 2. Rust を公式の手順（rustup）で入れる
-step "2. Rust を確かめます"
-if (( has_rust )); then
-  info "入っているので飛ばします"
-elif ask "Rust を公式の手順（rustup）で入れますか？" yes; then
-  if (( dry_run )); then
-    would "curl --proto '=https' --tlsv1.2 -sSf $RUSTUP_URL | sh -s -- -y を実行します"
-  else
-    info "rustup で Rust を入れます…"
-    if ! curl --proto '=https' --tlsv1.2 -sSf "$RUSTUP_URL" | sh -s -- -y; then
-      echo "Rust を入れられませんでした。https://rustup.rs/ の手順で入れてから、もう一度実行してください。" >&2
-      exit 1
-    fi
-    if ! command -v cargo >/dev/null 2>&1; then
-      echo "Rust を入れましたが、cargo が見つかりません。ターミナルを開き直してから、もう一度実行してください。" >&2
-      exit 1
-    fi
-    info "Rust を入れました（$(cargo --version)）"
-  fi
+kobito_step "Rust を確かめます"
+if (( $+commands[cargo] )); then
+  kobito_info "Rust: あります（$(cargo --version)）"
+elif (( kobito_dry_run )); then
+  kobito_info "Rust: ありません。実際に動かすと、公式の手順（curl --proto '=https' --tlsv1.2 -sSf $RUSTUP_URL | sh -s -- -y）で入れるかを尋ねます。"
+elif kobito_ask "Rust がありません。公式の手順（rustup）で入れますか？" y; then
+  curl --proto '=https' --tlsv1.2 -sSf "$RUSTUP_URL" | sh -s -- -y || kobito_fail "Rust を入れられませんでした。https://rustup.rs/ の手順で入れてから、もう一度動かしてください。"
+  rehash
+  (( $+commands[cargo] )) || kobito_fail "Rust を入れましたが、cargo が見つかりません。ターミナルを開き直してから、もう一度動かしてください。"
+  kobito_info "Rust を入れました（$(cargo --version)）"
 else
-  if (( dry_run )); then
-    would "Rust が無いため、実際に動かすとここで止まります"
-  else
-    echo "" >&2
-    echo "ビルドには Rust が必要です。https://rustup.rs/ の手順で入れてから、もう一度実行してください。" >&2
-    exit 1
-  fi
+  kobito_fail "ビルドには Rust が要ります。https://rustup.rs/ の手順で入れてから、もう一度動かしてください。"
 fi
 
-# 3. ビルドする
-step "3. $APP_NAME.app をビルドします（数分かかります）"
-if (( dry_run )); then
-  would "./build.sh を実行して、このフォルダに $APP_NAME.app を作ります"
-else
-  if ! ./build.sh; then
-    echo "" >&2
-    echo "ビルドに失敗しました。上の表示を確かめてください。" >&2
-    exit 1
-  fi
-  info "$PWD/$APP_NAME.app を作りました"
-fi
+# ソースが新しくなっていることがあるので、毎回作り直す。
+kobito_step "$APP_NAME.app をビルドします（数分かかります）"
+built="$kobito_here/$APP_NAME.app"
+kobito_run zsh ./build.sh || kobito_fail "ビルドできませんでした。上の表示を確かめてください。"
 
-# 起動情報は .app の場所を含むので、移すかどうかを決めてから書き出す（手順4はこのあと）。
-# 5. 任意の設定：アプリケーションフォルダへ移す
-step "5. 任意の設定"
-app_path="$PWD/$APP_NAME.app"
-target="$APP_DIR/$APP_NAME.app"
-if ask "$APP_NAME.app をアプリケーションフォルダへ移しますか？" no; then
+# 起動情報は .app の場所を含むので、移すかどうかを決めてから書き出す。
+kobito_step "$APP_NAME.app をアプリケーションフォルダへ移すかを決めます"
+target="$APPLICATIONS_DIR/$APP_NAME.app"
+placed="$built"
+if kobito_ask "$APP_NAME.app を $APPLICATIONS_DIR へ移しますか？" n; then
   move=1
   if [[ -e $target ]]; then
+    kobito_info "$target がすでにあります。"
     if pgrep -f "^$target/Contents/MacOS/" >/dev/null 2>&1; then
-      info "$target が動いています。置き換えずにおきます（終了してから、もう一度実行してください）"
+      kobito_info "$target が動いているので、置き換えません。終了してから、もう一度 ./setup.sh を動かしてください。"
       move=0
-    elif ! ask "$target がすでにあります。置き換えてよいですか？" no; then
-      info "置き換えずにおきます"
+    elif ! kobito_ask "置き換えますか？（今あるものは消えます。登録した項目と設定は消えません）" n; then
+      kobito_info "置き換えません。今あるものはそのままにします。"
       move=0
     fi
   fi
   if (( move )); then
-    if (( dry_run )); then
-      [[ -e $target ]] && would "$target を消します"
-      would "$app_path を $APP_DIR へ移します"
+    if { [[ ! -e $target ]] || kobito_run rm -rf "$target"; } && kobito_run mv "$built" "$target"; then
+      placed="$target"
+      (( kobito_dry_run )) || kobito_info "移しました: $placed"
     else
-      [[ -e $target ]] && rm -rf "$target"
-      mv "$app_path" "$target"
-      app_path=$target
-      info "$target へ移しました"
+      kobito_info "移せませんでした。$built はこのフォルダに残しています。"
     fi
   fi
 else
-  info "移さずにおきます"
+  kobito_info "移しません。$built を使います。"
 fi
 
-# 4. 起動情報（約束④）を、置いた場所の .app で書き出す。
-# --write-launch-info のときは、書いてすぐ終わる（画面もキーの監視も始めず、動いている方も終わらせない）。
-step "4. 起動情報を書き出します"
-if (( dry_run )); then
-  would "$app_path/Contents/MacOS/OpenSesame --write-launch-info で書き出します"
-elif written=$("$app_path/Contents/MacOS/OpenSesame" --write-launch-info); then
-  info "$written に書き出しました"
-else
-  echo "起動情報を書き出せませんでした。アプリを一度起動すると、書き出されます。" >&2
-fi
+# --write-launch-info は、書いてすぐ終わる（画面もキーの監視も始めず、動いている方も終わらせない）。
+kobito_step "起動情報を書き出します"
+kobito_run "$placed/Contents/MacOS/$EXEC_NAME" --write-launch-info || kobito_fail "起動情報を書き出せませんでした。アプリを一度起動すると、書き出されます。"
 
-# 6. 起動のしかた
-step "6. 起動のしかた"
-info "$app_path をダブルクリックして起動します。"
-[[ $app_path != $APP_DIR/* ]] && info "アプリケーションフォルダへ移してから起動すると、次の許可が保たれやすくなります。"
-echo ""
-info "キー入力を検知するため、「アクセシビリティ」の許可が必要です（初めて起動すると案内が出ます）。"
-info "  1. 案内の「アクセシビリティ設定を開く」をクリックします"
-info "  2. 一覧の下の「＋」から $APP_NAME を追加し、スイッチをオンにします"
-info "作り直したときは、作るたびに署名が変わるため、一覧から $APP_NAME を「－」で消して、追加し直してください。"
-echo ""
-(( dry_run )) && echo "dry-run のため、何も変えていません。" || echo "初期設定が終わりました。"
-exit 0
+kobito_step "許可について"
+kobito_info "キー入力を検知するため、「アクセシビリティ」の許可が要ります（初めて起動すると案内が出ます）。"
+kobito_info "  1. 案内の「アクセシビリティ設定を開く」をクリックします"
+kobito_info "  2. 一覧の下の「＋」から $APP_NAME を追加し、スイッチをオンにします"
+kobito_info "作り直したときは、作るたびに署名が変わるため、一覧から $APP_NAME を「－」で消して、追加し直してください。"
+[[ $placed == $APPLICATIONS_DIR/* ]] || kobito_info "アプリケーションフォルダへ移してから起動すると、許可が保たれやすくなります。"
+
+kobito_finish "open \"$placed\""
