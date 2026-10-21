@@ -1,4 +1,4 @@
-//! kobito シリーズの約束（kobito-workspace の docs/CONTRACTS.md）のうち、PC 固有領域に置くもの。
+//! kobito シリーズの約束（docs/kobito-spec/CONTRACTS.md）のうち、PC 固有領域に置くもの。
 //!
 //! ```text
 //! ~/Library/Application Support/kobito-tools/   （Windows は %APPDATA%\kobito-tools\）
@@ -22,7 +22,7 @@ pub const APP_NAME: &str = "OpenSesame!";
 /// この引数で起動したら、起動情報だけを書いて終わる（`setup.sh` から呼ぶ）。
 pub const WRITE_LAUNCH_INFO_FLAG: &str = "--write-launch-info";
 /// この引数で起動したら、名乗り（起動情報と同じ JSON）を標準出力に出すだけで終わる。
-/// 何も書かず、何も起動しない（シリーズの決まり：kobito-workspace の docs/APP_PACKAGE.md）。
+/// 何も書かず、何も起動しない（シリーズの決まり：docs/kobito-spec/APP_PACKAGE.md）。
 pub const METADATA_FLAG: &str = "--metadata";
 
 /// PC 固有領域の `kobito-tools` フォルダ。
@@ -62,7 +62,7 @@ pub fn bundled_icon(executable: &Path) -> Option<PathBuf> {
 }
 
 /// 自分の起動情報。起動のコマンドは、今動いている実行ファイルそのもの。
-/// `embed` は書かない（ユーティリティアプリは workspace の中に表示しない）。
+/// `embed` は書かない（ユーティリティアプリはほかのアプリの中に表示しない）。
 /// 見せ方（英語名・色・アイコン）も名乗る。外から呼べる操作（`actions`）は持たない。
 pub fn launch_record(executable: &Path) -> Value {
     let mut icon = json!({ "glyph": "🔑" });
