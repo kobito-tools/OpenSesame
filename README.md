@@ -225,6 +225,8 @@ OpenSesame! は、起動するたびに、自分の起動のしかたと見せ�
 - 置き場所：macOS は `~/Library/Application Support/kobito-tools/apps/opensesame.json`、Windows は `%APPDATA%\kobito-tools\apps\opensesame.json`
 - 画面を開かずに書き出すだけのときは、`OpenSesame!.app/Contents/MacOS/OpenSesame --write-launch-info` を実行します。書き出してすぐ終わります。
 - 書き出すのは起動のしかたと見せ方だけで、設定や登録した項目は書きません。
+- 書き出さずに、同じ内容を画面（標準出力）に出すだけのときは `--metadata` を付けます。
+- リポジトリの直下の `kobito-app.json` は、kobito シリーズのアプリであることを示す目印です（アプリの形で配るので `"kind": "native"`）。
 
 ## プライバシー
 

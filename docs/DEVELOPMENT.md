@@ -182,6 +182,8 @@ npm run tauri icon src-tauri/icons/source.png
 - アイコンの画像は、`tauri.conf.json` の `bundle.resources` で `icons/128x128@2x.png`（256×256）を `.app` の中に `kobito-icon.png` として入れ、実行ファイルの場所から求めます（macOS は `Contents/Resources/`、Windows は実行ファイルの隣）。リポジトリの画像を指さないのは、`.app` をアプリケーションフォルダへ移したあと、アプリがリポジトリの場所を知る手段が無いためです。画像が無い・256 KB を超えるときは `file` を書かず、`glyph` だけを名乗ります。
 - 書くときは同じフォルダの一時ファイルに書いてから置き換えます。
 - `--write-launch-info` を付けて起動すると、書いてすぐ終わります（書いたパスを標準出力に出す。失敗したら終了コード 1）。`run()` の最初、二重起動の処理（`instance::take_over_or_exit`）より前で調べるので、動いている OpenSesame! を終わらせず、画面もキーの監視も始めません。`setup.sh` の手順4は、`.app` をアプリケーションフォルダへ移すかを決めたあとに、置いた場所の `.app` でこれを動かします。
+- `--metadata` を付けて起動すると、起動情報と同じ JSON を標準出力に出してすぐ終わります（何も書きません）。`--write-launch-info` と同じく、二重起動の処理より前で調べます（`series::exit_if_only_printing_metadata`）。
+- リポジトリの直下の `kobito-app.json` は、シリーズの決まり（kobito-workspace の `docs/APP_PACKAGE.md`）の目印です。アプリの形で配るので `"kind": "native"` と書き、`launch.py` は持ちません（登録は今までどおり `setup.sh` と `--write-launch-info`）。アプリID・表示名は `series.rs`、`bundle_id` は `tauri.conf.json` の `identifier` とそろえます（`series::tests::the_marker_names_this_app_as_a_native_series_app` が確かめます）。
 
 ### ほかのアプリの操作を開く
 
