@@ -71,12 +71,12 @@ cargo test --manifest-path src-tauri/Cargo.toml
 npx tsc --noEmit
 ```
 
-起動情報が約束どおりかは、作った `.app` で書き出して、kobito-workspace の確かめる道具に読ませます。`KOBITO_CONFIG_DIR` を一時フォルダにすれば、本物の起動情報には触れません。
+起動情報が約束どおりかは、作った `.app` で書き出して、`docs/kobito-spec/CONTRACTS.md` の「④ 起動情報」と見比べます。`KOBITO_CONFIG_DIR` を一時フォルダにすれば、本物の起動情報には触れません。
 
 ```bash
 export KOBITO_CONFIG_DIR="$(mktemp -d)"
 "./OpenSesame!.app/Contents/MacOS/OpenSesame" --write-launch-info
-(cd ../kobito-workspace && uv run scripts/check_contracts.py --apps)
+cat "$KOBITO_CONFIG_DIR/apps/opensesame.json"
 ```
 
 `npm run build` はフロントエンド（`dist/`）を生成するだけです。アプリ本体はRustバイナリが `dist/` を取り込んでコンパイルされるため、**変更を反映するには `tauri dev` か `tauri build` が必要**です。
@@ -160,7 +160,7 @@ npm run tauri icon src-tauri/icons/source.png
 
 ## kobito シリーズの起動情報
 
-`series.rs` が受け持ちます。形は kobito-workspace の `docs/CONTRACTS.md` の「④ 起動情報」、考え方は `docs/APP_INTERFACE.md` に従います。ほかのアプリの名前はコードに書きません（名乗られたものを表示するだけ）。
+`series.rs` が受け持ちます。形は `docs/kobito-spec/CONTRACTS.md` の「④ 起動情報」、考え方は `docs/kobito-spec/APP_INTERFACE.md` に従います。ほかのアプリの名前はコードに書きません（名乗られたものを表示するだけ）。
 
 置き場所は PC 固有領域の `kobito-tools/apps/<アプリID>.json` です（macOS は `~/Library/Application Support/`、Windows は `%APPDATA%\`）。環境変数 `KOBITO_CONFIG_DIR` があれば、その中の `apps/` を使います（テスト用）。
 
@@ -178,18 +178,18 @@ npm run tauri icon src-tauri/icons/source.png
 ```
 
 - 起動のたびに（`setup` の中で）書き直します。書けなくても起動は止めません。
-- `command` は今動いている実行ファイル（`std::env::current_exe()`）です。`embed` は書きません（ユーティリティアプリは workspace の中に表示しない）。`actions` も持ちません。
+- `command` は今動いている実行ファイル（`std::env::current_exe()`）です。`embed` は書きません（ユーティリティアプリはほかのアプリの中に表示しない）。`actions` も持ちません。
 - アイコンの画像は、`tauri.conf.json` の `bundle.resources` で `icons/128x128@2x.png`（256×256）を `.app` の中に `kobito-icon.png` として入れ、実行ファイルの場所から求めます（macOS は `Contents/Resources/`、Windows は実行ファイルの隣）。リポジトリの画像を指さないのは、`.app` をアプリケーションフォルダへ移したあと、アプリがリポジトリの場所を知る手段が無いためです。画像が無い・256 KB を超えるときは `file` を書かず、`glyph` だけを名乗ります。
 - 書くときは同じフォルダの一時ファイルに書いてから置き換えます。
 - `--write-launch-info` を付けて起動すると、書いてすぐ終わります（書いたパスを標準出力に出す。失敗したら終了コード 1）。`run()` の最初、二重起動の処理（`instance::take_over_or_exit`）より前で調べるので、動いている OpenSesame! を終わらせず、画面もキーの監視も始めません。`setup.sh` の手順4は、`.app` をアプリケーションフォルダへ移すかを決めたあとに、置いた場所の `.app` でこれを動かします。
 - `--metadata` を付けて起動すると、起動情報と同じ JSON を標準出力に出してすぐ終わります（何も書きません）。`--write-launch-info` と同じく、二重起動の処理より前で調べます（`series::exit_if_only_printing_metadata`）。
-- リポジトリの直下の `kobito-app.json` は、シリーズの決まり（kobito-workspace の `docs/APP_PACKAGE.md`）の目印です。アプリの形で配るので `"kind": "native"` と書き、`launch.py` は持ちません（登録は今までどおり `setup.sh` と `--write-launch-info`）。アプリID・表示名は `series.rs`、`bundle_id` は `tauri.conf.json` の `identifier` とそろえます（`series::tests::the_marker_names_this_app_as_a_native_series_app` が確かめます）。
+- リポジトリの直下の `kobito-app.json` は、シリーズの決まり（`docs/kobito-spec/APP_PACKAGE.md`）の目印です。アプリの形で配るので `"kind": "native"` と書き、`launch.py` は持ちません（登録は今までどおり `setup.sh` と `--write-launch-info`）。アプリID・表示名は `series.rs`、`bundle_id` は `tauri.conf.json` の `identifier` とそろえます（`series::tests::the_marker_names_this_app_as_a_native_series_app` が確かめます）。
 
 ### ほかのアプリの操作を開く
 
 - 設定画面の「シリーズの操作」は `list_series_actions` で、`apps/*.json` をすべて読み、操作（`actions`）を名乗っているアプリを名前の順に返します。読み方は共通部品（`kit.contracts.launch`）と揃えています。`app`・`name`・`command` が欠けている・形が違う起動情報と、ファイル名とアプリIDが合わない起動情報は捨てます。操作は、宛先がほかのアプリID・`{today}` 以外の `{…}` を含む・`id` が重なるものを1件ずつ捨てます。
 - 登録（`create_series_action`）で設定に覚えるのは、アプリIDと操作の `id` だけです。表示名は「アプリ名 › 操作の名前」（英語表示なら `name_en`・`label_en`）。`icon.file` が PNG なら、ほかの項目と同じくデータ領域の `icons/system/` へ写します（画面はデータ領域の画像しか出せないため。SVG は写せないので名前の1文字目を出す）。
-- キーが押されたら、その時点の起動情報を読み直し、`{today}` をこの PC の今日の日付（`YYYY-MM-DD`）に置き換えて、`command` の後ろに URL を足し、シェルを通さずに動かします（`command::launch_program`）。④の決まりのとおりで、OS に `kobito://` を開かせることはしません（`uv run` のアプリは URL スキームを登録できないため）。workspace の中で表示中のアプリへは届けません。
+- キーが押されたら、その時点の起動情報を読み直し、`{today}` をこの PC の今日の日付（`YYYY-MM-DD`）に置き換えて、`command` の後ろに URL を足し、シェルを通さずに動かします（`command::launch_program`）。④の決まりのとおりで、OS に `kobito://` を開かせることはしません（`uv run` のアプリは URL スキームを登録できないため）。ほかのアプリの中に表示されているアプリへは届けません。
 - 起動情報や操作が見つからないときは `series-app-missing`・`series-action-missing`、起動できない・3秒以内に失敗したときはコマンドと同じ `command-spawn-failed`・`command-failed` を `launch-failed` イベントで送り、設定画面の知らせ欄に出します。
 - 保存のときは、アプリIDの形と、操作の `id` が空でないことだけを確かめます。起動情報が無くても保存できます（アプリを消しても、名前やキーは変えられるように）。
 
