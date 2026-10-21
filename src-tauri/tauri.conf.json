@@ -71,7 +71,7 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "icons/128x128@2x.png": "kobito-icon.png"
+      "../kobito/icon.svg": "kobito/icon.svg"
     },
     "category": "Utility",
     "shortDescription": "Hold a key, open anything",

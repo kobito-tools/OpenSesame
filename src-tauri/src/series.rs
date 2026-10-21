@@ -43,10 +43,10 @@ pub fn apps_dir() -> Option<PathBuf> {
     config_dir().map(|dir| dir.join("apps"))
 }
 
-/// 起動情報に名乗るアイコンの画像。`.app` の中（macOS は `Contents/Resources/`、
-/// Windows は実行ファイルの隣）に入れておくので、`.app` を移しても見つかる。
-/// 元は `src-tauri/icons/128x128@2x.png`（`tauri.conf.json` の `bundle.resources`）。
-pub const ICON_FILE: &str = "kobito-icon.png";
+/// 起動情報に名乗るアイコンの元。リポジトリの `kobito/icon.svg` を、同じ形で `.app` の中
+/// （macOS は `Contents/Resources/`、Windows は実行ファイルの隣）に入れておくので、`.app` を移しても見つかる
+/// （`tauri.conf.json` の `bundle.resources`）。
+pub const ICON_FILE: &str = "kobito/icon.svg";
 /// 約束④の `icon.file` の大きさの上限。
 const ICON_MAX_BYTES: u64 = 256 * 1024;
 
@@ -417,14 +417,27 @@ pub(crate) mod tests {
         assert!(root.join("setup.sh").is_file());
         assert_eq!(marker["repository"], "kobito-tools/OpenSesame");
         assert_eq!(marker["platforms"], json!(["macos", "windows"]));
-        for key in ["description", "description_en"] {
+        assert_eq!(marker["package"], 1);
+        for key in ["tagline", "tagline_en", "description", "description_en"] {
             assert!(!marker[key].as_str().unwrap().trim().is_empty(), "{key}");
+        }
+        for key in ["tagline", "tagline_en"] {
+            let text = marker[key].as_str().unwrap();
+            assert!(text.chars().count() <= 80 && !text.contains('\n'), "{key}");
+        }
+        for name in ["kobito/icon.svg", "kobito/icon-1024.png", "Setup.command"] {
+            assert!(root.join(name).is_file(), "{name}");
         }
         let config: Value = serde_json::from_str(
             &fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json")).unwrap(),
         )
         .unwrap();
         assert_eq!(marker["bundle_id"], config["identifier"]);
+        // 版は tauri.conf.json・Cargo.toml・package.json とそろえる。
+        let package: Value = serde_json::from_str(&fs::read_to_string(root.join("package.json")).unwrap()).unwrap();
+        assert_eq!(marker["version"], config["version"]);
+        assert_eq!(marker["version"], package["version"]);
+        assert_eq!(marker["version"], env!("CARGO_PKG_VERSION"));
     }
 
     #[test]
@@ -444,7 +457,7 @@ pub(crate) mod tests {
         assert_eq!(record["color"], "gray");
         assert_eq!(record["icon"], json!({ "glyph": "🔑" }));
         fs::create_dir_all(icon.parent().unwrap()).unwrap();
-        fs::write(&icon, b"png").unwrap();
+        fs::write(&icon, b"<svg/>").unwrap();
         let record = launch_record(&executable);
         assert_eq!(record["icon"]["file"], icon.to_string_lossy().as_ref());
         assert!(Path::new(record["icon"]["file"].as_str().unwrap()).is_absolute());
@@ -454,7 +467,7 @@ pub(crate) mod tests {
         fs::remove_dir_all(&root).unwrap();
     }
 
-    /// `.app` に入れる画像が、約束の形（正方形の .png、256 KB 以下）に合うこと。
+    /// `.app` に入れる画像が、リポジトリの `kobito/icon.svg` で、約束の形（`viewBox` が正方形の .svg、256 KB 以下）に合うこと。
     #[test]
     fn the_bundled_icon_fits_the_contract() {
         let config: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
@@ -464,10 +477,14 @@ pub(crate) mod tests {
             .find(|(_, target)| target.as_str() == Some(ICON_FILE))
             .expect("the icon is bundled");
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(source);
-        assert_eq!(path.extension().unwrap(), "png");
+        assert_eq!(path, Path::new(env!("CARGO_MANIFEST_DIR")).join("../kobito/icon.svg"));
         assert!(fs::metadata(&path).unwrap().len() <= ICON_MAX_BYTES);
-        let image = image::open(&path).unwrap();
-        assert_eq!(image.width(), image.height());
+        let svg = fs::read_to_string(&path).unwrap();
+        let view_box = svg.split("viewBox=\"").nth(1).and_then(|rest| rest.split('"').next()).expect("viewBox");
+        let numbers: Vec<f64> = view_box.split_whitespace().map(|n| n.parse().unwrap()).collect();
+        assert_eq!(numbers.len(), 4);
+        assert_eq!(numbers[2], numbers[3]);
+        assert!(!svg.contains("<script"));
     }
 
     #[test]
