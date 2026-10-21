@@ -1,0 +1,15 @@
+{
+  "format": "kobito-app",
+  "v": 1,
+  "app": "opensesame",
+  "name": "OpenSesame!",
+  "name_en": "OpenSesame!",
+  "description": "キーを押している間だけ出るランチャー",
+  "description_en": "A launcher that shows only while you hold its keys",
+  "kind": "native",
+  "setup": "setup.sh",
+  "contracts": 1,
+  "bundle_id": "io.github.kobito-tools.opensesame",
+  "repository": "kobito-tools/OpenSesame",
+  "platforms": ["macos", "windows"]
+}
