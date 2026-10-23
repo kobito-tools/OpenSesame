@@ -9,7 +9,7 @@
   "tagline_en": "Hold a key and the door to your apps and files opens",
   "description": "キーを押している間だけ出るランチャー",
   "description_en": "A launcher that shows only while you hold its keys",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "kind": "native",
   "setup": "setup.sh",
   "contracts": 1,
