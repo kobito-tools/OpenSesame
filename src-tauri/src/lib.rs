@@ -1,3 +1,4 @@
+mod command;
 mod favicon;
 mod frontmost;
 mod icons;
@@ -5,6 +6,7 @@ mod input;
 mod instance;
 mod keys;
 mod model;
+mod series;
 mod storage;
 #[cfg(target_os = "macos")]
 mod tap_macos;
@@ -132,6 +134,8 @@ async fn select_target(
         target: TargetPath {
             kind: "path".into(),
             value: path.to_string_lossy().into_owned(),
+            working_dir: None,
+            ..Default::default()
         },
         icon: TargetIcon {
             kind: "system".into(),
@@ -175,6 +179,8 @@ async fn create_website(
         target: TargetPath {
             kind: "url".into(),
             value: url,
+            working_dir: None,
+            ..Default::default()
         },
         icon: TargetIcon {
             kind: "system".into(),
@@ -182,6 +188,141 @@ async fn create_website(
         },
         hide_when_frontmost: false,
     })
+}
+
+/// コマンドもファイル選択を経ないので、入力から登録項目を組み立てる。
+/// 表示名を省略したときはコマンドの最初の語を使う。
+#[tauri::command]
+fn create_command(
+    command: String,
+    name: Option<String>,
+    working_dir: Option<String>,
+    key: Option<String>,
+    shift: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<LauncherItem, String> {
+    let command = command::normalize(&command)?;
+    let working_dir = command::normalize_working_dir(working_dir.as_deref());
+    if let Some(dir) = &working_dir {
+        if !Path::new(dir).is_dir() {
+            return Err(error("missing-working-dir", dir));
+        }
+    }
+    let name = name
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| command_name(&command));
+    let shift = shift.unwrap_or(false);
+    let key = match key {
+        Some(requested) => {
+            validate_key(&requested)?;
+            requested
+        }
+        None => next_available_key(&state.config, shift)?,
+    };
+    Ok(LauncherItem {
+        id: Uuid::new_v4().to_string(),
+        target_type: TargetType::Command,
+        name,
+        key,
+        shift,
+        target: TargetPath {
+            kind: "command".into(),
+            value: command,
+            working_dir,
+            ..Default::default()
+        },
+        icon: TargetIcon {
+            kind: "system".into(),
+            value: None,
+        },
+        hide_when_frontmost: false,
+    })
+}
+
+/// シリーズのほかのアプリが起動情報（④）に名乗った操作を、アプリごとに返す。
+/// 操作を名乗っていないアプリは出さない。
+#[tauri::command]
+fn list_series_actions() -> Vec<series::SeriesApp> {
+    series::read_all()
+        .into_iter()
+        .filter(|app| !app.actions.is_empty())
+        .collect()
+}
+
+/// シリーズの操作を割り当てる項目を組み立てる。設定に覚えるのはアプリIDと操作の `id` だけで、
+/// URL や起動コマンドは覚えない。表示名は「アプリ名 › 操作の名前」（あとから変えられる）。
+#[tauri::command]
+fn create_series_action(
+    app: String,
+    action: String,
+    key: Option<String>,
+    shift: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<LauncherItem, String> {
+    let record = series::read_app(&app).ok_or_else(|| error("series-app-missing", &app))?;
+    let found = record
+        .actions
+        .iter()
+        .find(|candidate| candidate.id == action)
+        .ok_or_else(|| error("series-action-missing", &format!("{} › {action}", record.name)))?;
+    let english = state
+        .config
+        .read()
+        .map(|config| config.language == "en")
+        .unwrap_or(false);
+    let (app_name, action_label) = if english {
+        (
+            record.name_en.as_deref().unwrap_or(&record.name),
+            found.label_en.as_deref().unwrap_or(&found.label),
+        )
+    } else {
+        (record.name.as_str(), found.label.as_str())
+    };
+    let shift = shift.unwrap_or(false);
+    let key = match key {
+        Some(requested) => {
+            validate_key(&requested)?;
+            requested
+        }
+        None => next_available_key(&state.config, shift)?,
+    };
+    let id = Uuid::new_v4().to_string();
+    // アプリが名乗ったアイコンを、ほかの登録項目と同じ場所へ写す（画面は自分のデータ領域の画像しか出せない）。
+    // 写せなければ（SVG など）名前の1文字目を出す。
+    let icon = record.icon_file.as_ref().and_then(|source| {
+        let destination = state.data_dir.join("icons/system").join(format!("{id}.png"));
+        copy_custom_icon(source, &destination)
+            .ok()
+            .map(|_| destination.to_string_lossy().into_owned())
+    });
+    Ok(LauncherItem {
+        id,
+        target_type: TargetType::KobitoAction,
+        name: format!("{app_name} › {action_label}"),
+        key,
+        shift,
+        target: TargetPath {
+            kind: "kobito-action".into(),
+            app: Some(record.app.clone()),
+            action: Some(found.id.clone()),
+            ..Default::default()
+        },
+        icon: TargetIcon {
+            kind: "system".into(),
+            value: icon,
+        },
+        hide_when_frontmost: false,
+    })
+}
+
+/// コマンドの作業フォルダを選ぶ。登録はせず、選んだパスを返すだけ。
+#[tauri::command]
+async fn pick_folder() -> Option<String> {
+    rfd::AsyncFileDialog::new()
+        .pick_folder()
+        .await
+        .map(|selection| selection.path().to_string_lossy().into_owned())
 }
 
 /// サイトのアイコンが変わったときや、登録時に取れなかったときに取り直す。
@@ -304,7 +445,7 @@ fn runtime_info(state: State<'_, AppState>) -> RuntimeInfo {
 }
 
 /// 表示言語を切り替えられるよう、UIに出る失敗はコードで返してフロント側で翻訳する。
-fn error(code: &str, argument: &str) -> String {
+pub(crate) fn error(code: &str, argument: &str) -> String {
     if argument.is_empty() {
         format!("applauncher-error:{code}")
     } else {
@@ -354,6 +495,20 @@ fn validate_config(config: &LauncherConfig, previous: &LauncherConfig) -> Result
             }
             continue;
         }
+        if matches!(item.target_type, TargetType::Command) {
+            validate_command(item, previous)?;
+            continue;
+        }
+        if matches!(item.target_type, TargetType::KobitoAction) {
+            // 起動情報は押されたときに読み直すので、ここでは覚えるものの形だけを確かめる。
+            // アプリを消しても、割り当ての名前やキーは変えられるようにする。
+            let app = item.target.app.as_deref().unwrap_or("");
+            let action = item.target.action.as_deref().unwrap_or("");
+            if !series::is_app_id(app) || action.trim().is_empty() {
+                return Err(error("invalid-series-action", ""));
+            }
+            continue;
+        }
         let already_registered = previous
             .items
             .iter()
@@ -361,6 +516,24 @@ fn validate_config(config: &LauncherConfig, previous: &LauncherConfig) -> Result
         if !already_registered && !Path::new(&item.target.value).exists() {
             return Err(error("missing-target", &item.target.value));
         }
+    }
+    Ok(())
+}
+
+/// コマンドそのものは動かすまで正しいか分からないので、1行であることだけ確かめる。
+/// 作業フォルダはパスと同じく、新しく指定したときだけ存在を確かめる。
+fn validate_command(item: &LauncherItem, previous: &LauncherConfig) -> Result<(), String> {
+    if command::normalize(&item.target.value).ok().as_deref() != Some(item.target.value.as_str()) {
+        return Err(error("invalid-command", ""));
+    }
+    let Some(dir) = &item.target.working_dir else {
+        return Ok(());
+    };
+    let already_registered = previous.items.iter().any(|saved| {
+        saved.id == item.id && saved.target.working_dir.as_deref() == Some(dir.as_str())
+    });
+    if !already_registered && !Path::new(dir).is_dir() {
+        return Err(error("missing-working-dir", dir));
     }
     Ok(())
 }
@@ -467,6 +640,16 @@ fn website_name(url: &str) -> String {
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
     let host = url_host(rest);
     host.strip_prefix("www.").unwrap_or(host).to_string()
+}
+
+/// 表示名を省略したときの名前。最初の語で、パスならファイル名の部分だけにする。
+fn command_name(command: &str) -> String {
+    command
+        .split_whitespace()
+        .next()
+        .and_then(|word| word.rsplit(['/', '\\']).next())
+        .unwrap_or(command)
+        .to_string()
 }
 
 fn display_name(path: &Path) -> String {
@@ -580,10 +763,20 @@ const POPUP_CORNER_RADIUS: f64 = 22.0;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // `--write-launch-info` のときは、ここで書いて終わる。下の二重起動の処理より先に呼ぶので、
+    // 動いている OpenSesame! を終わらせない。
+    series::exit_if_only_writing_launch_info();
+    // `--metadata` のときは、名乗りを出すだけで終わる（何も書かず、動いている方も終わらせない）。
+    series::exit_if_only_printing_metadata();
     // 他の版と並んで動くとキーフックが二重になるので、ウィンドウを作る前に片付ける。
     instance::take_over_or_exit();
     tauri::Builder::default()
         .setup(|app| {
+            // シリーズのほかのアプリが起動のしかたを知れるよう、起動のたびに書き直す。
+            // 書けなくても、ランチャーの機能には関係しないので起動は止めない。
+            if let Err(message) = series::write_launch_info() {
+                eprintln!("{message}");
+            }
             let data_dir = app
                 .path()
                 .app_local_data_dir()
@@ -622,6 +815,10 @@ pub fn run() {
             save_config,
             select_target,
             create_website,
+            create_command,
+            list_series_actions,
+            create_series_action,
+            pick_folder,
             refetch_website_icon,
             select_custom_icon,
             runtime_info,
@@ -698,6 +895,8 @@ mod tests {
             target: TargetPath {
                 kind: "path".into(),
                 value: "/".into(),
+                working_dir: None,
+                ..Default::default()
             },
             icon: TargetIcon {
                 kind: "system".into(),
@@ -718,6 +917,8 @@ mod tests {
             target: TargetPath {
                 kind: "path".into(),
                 value: path.into(),
+                working_dir: None,
+                ..Default::default()
             },
             icon: TargetIcon {
                 kind: "system".into(),
@@ -804,6 +1005,82 @@ mod tests {
             "applauncher-error:duplicate-key:Shift+KeyA"
         );
     }
+    fn command_item(id: &str, command: &str, working_dir: Option<&str>) -> LauncherItem {
+        let mut item = item_at(id, "KeyC", command);
+        item.target_type = TargetType::Command;
+        item.target.kind = "command".into();
+        item.target.working_dir = working_dir.map(str::to_string);
+        item
+    }
+
+    #[test]
+    fn commands_skip_the_path_check_but_must_be_one_line() {
+        let saved = LauncherConfig::default();
+        let mut edited = saved.clone();
+        edited.items.push(command_item("cmd", "uv run app.py", None));
+        assert!(validate_config(&edited, &saved).is_ok());
+        edited.items[0].target.value = "echo a\necho b".into();
+        assert_eq!(
+            validate_config(&edited, &saved).unwrap_err(),
+            "applauncher-error:invalid-command"
+        );
+        edited.items[0].target.value = " ".into();
+        assert!(validate_config(&edited, &saved).is_err());
+    }
+
+    #[test]
+    fn a_new_working_dir_must_exist_but_a_saved_one_may_disappear() {
+        let saved = LauncherConfig::default();
+        let mut edited = saved.clone();
+        edited.items.push(command_item("cmd", "make", Some("/nonexistent/opensesame")));
+        assert_eq!(
+            validate_config(&edited, &saved).unwrap_err(),
+            "applauncher-error:missing-working-dir:/nonexistent/opensesame"
+        );
+        edited.items[0].target.working_dir = Some("/".into());
+        assert!(validate_config(&edited, &saved).is_ok());
+        let mut saved = LauncherConfig::default();
+        saved.items.push(command_item("cmd", "make", Some("/nonexistent/opensesame")));
+        let mut renamed = saved.clone();
+        renamed.items[0].name = "Build".into();
+        assert!(validate_config(&renamed, &saved).is_ok());
+    }
+
+    fn series_item(app: Option<&str>, action: Option<&str>) -> LauncherItem {
+        let mut item = item_at("series", "KeyM", "");
+        item.target_type = TargetType::KobitoAction;
+        item.target = TargetPath {
+            kind: "kobito-action".into(),
+            app: app.map(str::to_string),
+            action: action.map(str::to_string),
+            ..Default::default()
+        };
+        item
+    }
+
+    #[test]
+    fn series_actions_need_an_app_id_and_an_action_but_no_launch_info() {
+        let saved = LauncherConfig::default();
+        let mut edited = saved.clone();
+        // 起動情報が無くても保存できる（押したときに知らせる）。
+        edited.items.push(series_item(Some("nowhere"), Some("new")));
+        assert!(validate_config(&edited, &saved).is_ok());
+        for (app, action) in [(None, Some("new")), (Some("Bad ID"), Some("new")), (Some("memo"), None), (Some("memo"), Some(" "))] {
+            edited.items[0] = series_item(app, action);
+            assert_eq!(
+                validate_config(&edited, &saved).unwrap_err(),
+                "applauncher-error:invalid-series-action"
+            );
+        }
+    }
+
+    #[test]
+    fn command_name_is_the_first_word_without_its_folder() {
+        assert_eq!(command_name("uv run app.py"), "uv");
+        assert_eq!(command_name("/opt/homebrew/bin/btop --utf-force"), "btop");
+        assert_eq!(command_name(r"C:\Tools\run.bat"), "run.bat");
+    }
+
     #[test]
     fn activation_must_not_be_shift_only() {
         let mut config = LauncherConfig::default();

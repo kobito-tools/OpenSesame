@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
     "Hiragino Sans", "Noto Sans JP", sans-serif;
   font-synthesis: none;
@@ -40,16 +40,19 @@ button, input, select { font: inherit; color: inherit; }
   -webkit-backdrop-filter: blur(30px) saturate(150%);
 }
 
+/*
+ * 設定画面はページ全体を縦に動かす。一覧だけを動かす作りだと、窓が低いときや
+ * 権限の案内が出ているときに一覧が数行しか見えなくなるため。
+ */
+.settings-body #app { overflow-y: auto; }
 .settings-shell {
-  height: 100%;
+  min-height: 100%;
   max-width: 1280px;
   margin: 0 auto;
   padding: 16px 24px 8px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  /* 権限カードなどで縦が足りなくなったとき、下の一覧が隠れないようにする。 */
-  overflow-y: auto;
 }
 
 .settings-header { display: flex; justify-content: space-between; gap: 22px; align-items: center; }
@@ -137,17 +140,21 @@ h1 { margin: 0; font-size: 21px; letter-spacing: -.03em; }
 /* 上半分にキーボード配列、下半分に種類別リスト。 */
 .settings-split {
   flex: 1;
-  min-height: 0;
   display: grid;
-  /* キーボードは潰さずに最低限の高さを確保し、余りをリストへ渡す。 */
-  grid-template-rows: auto minmax(220px, 1fr);
-  min-height: 572px;
+  /* 一覧は中身の高さのまま伸ばし、ページ全体のスクロールで見せる。 */
+  grid-template-rows: auto 1fr;
   gap: 12px;
 }
 .split-pane {
   min-height: 0; display: flex; flex-direction: column;
   border: 1px solid var(--line); border-radius: 18px;
-  background: var(--surface); box-shadow: var(--shadow); overflow: hidden;
+  background: var(--surface); box-shadow: var(--shadow); overflow: clip;
+}
+/* 一覧を下へ送っても、追加のボタンが手の届く所に残るようにする。 */
+.list-pane > .pane-heading {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--surface-strong);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
 }
 /* キーボードはポップアップの見た目をそのまま再現するため、白い枠を持たせない。 */
 .keyboard-pane {
@@ -165,7 +172,7 @@ h2 { margin: 0; font-size: 15px; }
   flex: 1; padding: 2px; overflow-x: auto; overflow-y: hidden;
   min-height: calc(var(--key-size) * 5 + 28px);
 }
-.items-table { flex: 1; min-height: 0; padding: 6px 8px 12px; overflow-y: auto; }
+.items-table { flex: 1; padding: 6px 8px 12px; }
 
 .button-row, .row-actions { display: flex; align-items: center; gap: 8px; }
 .activation-note { margin: 0; color: #92610a; font-size: 11px; }
@@ -196,6 +203,11 @@ h2 { margin: 0; font-size: 15px; }
 }
 .table-section-label strong { font-size: 12px; letter-spacing: .04em; }
 .table-section-label span { color: var(--ink-faint); font-size: 10px; }
+.unassigned-group > summary {
+  margin: 4px 0; padding: 7px 12px; border-radius: 10px;
+  color: var(--ink-soft); font-size: 12px; cursor: pointer; list-style-position: inside;
+}
+.unassigned-group > summary:hover { color: var(--accent); background: var(--accent-soft); }
 .item-row {
   display: grid; grid-template-columns: 44px minmax(200px, 1fr) 118px auto;
   align-items: center; gap: 14px; padding: 9px 12px; border-radius: 12px; transition: .18s ease;
@@ -278,6 +290,9 @@ h2 { margin: 0; font-size: 15px; }
 }
 .picker-action:hover { border-color: rgba(79, 70, 229, .45); background: white; }
 .picker-action .table-icon { width: 28px; height: 28px; flex: 0 0 28px; }
+.picker-series { display: grid; gap: 12px; max-height: 340px; overflow-y: auto; }
+.picker-series-app { display: grid; gap: 6px; }
+.picker-series-name { font-size: 12px; font-weight: 600; color: var(--ink-soft); }
 .picker-footer { display: flex; justify-content: flex-end; gap: 8px; }
 .picker-form { display: grid; gap: 10px; }
 .picker-field { display: grid; gap: 4px; font-size: 11px; color: var(--ink-soft); }
@@ -286,6 +301,8 @@ h2 { margin: 0; font-size: 15px; }
   background: var(--surface-strong); font-size: 13px; color: var(--ink); outline: 0;
 }
 .picker-field input:focus { border-color: rgba(79, 70, 229, .55); box-shadow: 0 0 0 3px var(--accent-soft); }
+.picker-field-row { display: flex; gap: 6px; align-items: center; }
+.picker-field-row input { flex: 1; min-width: 0; }
 
 /* ---------- ポップアップ ---------- */
 
@@ -295,8 +312,8 @@ h2 { margin: 0; font-size: 15px; }
  */
 .popup-body { min-width: 100%; background: transparent; overflow: hidden; }
 /*
- * ウィンドウ背面にはNSVisualEffectViewのぼかしが入っている。その上に明るい面を
- * 一枚重ねることで、ダークモードでも壁紙が明るくても字が読める状態を保つ。
+ * ウィンドウ背面にはNSVisualEffectViewのぼかしが入っている。その上に外観に合わせた
+ * 面を一枚重ねることで、壁紙の明るさによらず字が読める状態を保つ（ダークは末尾）。
  * 角丸はRust側のPOPUP_CORNER_RADIUSと揃えること。
  */
 .popup-body #app {
@@ -491,7 +508,6 @@ button.keyboard-key { cursor: pointer; }
 
 @media (max-height: 720px) {
   .settings-shell { padding: 12px 18px 6px; gap: 8px; }
-  .settings-split { grid-template-rows: auto minmax(180px, 1fr); min-height: 480px; }
   .segment small { display: none; }
   .subtitle { display: none; }
   .keyboard-pane { --key-size: 46px; }
@@ -503,4 +519,80 @@ button.keyboard-key { cursor: pointer; }
 .startup-message pre {
   margin: 0; padding: 12px; border-radius: 10px; background: rgba(23, 33, 58, .06);
   white-space: pre-wrap; word-break: break-all; font-size: 12px; user-select: text;
+}
+
+/*
+ * ダークモード。Mac の外観に合わせ、設定画面もパネルも暗い面に切り替える。
+ * ウィンドウ背面のぼかしも外観に合わせて暗くなるので、白の重ねを暗い色に置き換える。
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e7eaf2;
+    --ink-soft: #b3bacb;
+    --ink-faint: #848ca0;
+    --accent: #a5b4fc;
+    --accent-soft: rgba(129, 140, 248, .18);
+    --danger: #fb7185;
+    --surface: rgba(38, 42, 54, .82);
+    --surface-strong: rgba(48, 53, 67, .92);
+    --surface-quiet: rgba(38, 42, 54, .6);
+    --line: rgba(255, 255, 255, .12);
+    --line-soft: rgba(255, 255, 255, .07);
+    --shadow: 0 18px 50px rgba(0, 0, 0, .35);
+  }
+  .settings-body {
+    background:
+      radial-gradient(circle at 12% -4%, rgba(99, 102, 241, .2), transparent 42%),
+      radial-gradient(circle at 96% 8%, rgba(56, 189, 248, .12), transparent 38%),
+      rgba(22, 25, 32, .9);
+  }
+  .permission-card { background: var(--surface); border-color: rgba(251, 113, 133, .35); }
+  .permission-note { border-color: rgba(251, 191, 36, .3); background: rgba(251, 191, 36, .1); }
+  .permission-note strong, .activation-note { color: #fcd34d; }
+  .permission-note.error { border-color: rgba(251, 113, 133, .35); background: rgba(251, 113, 133, .12); }
+  .segmented { background: rgba(255, 255, 255, .06); }
+  .segment:hover { background: rgba(255, 255, 255, .08); }
+  .segment.active { background: rgba(255, 255, 255, .14); box-shadow: 0 2px 8px rgba(0, 0, 0, .35); }
+  .button:hover { border-color: rgba(165, 180, 252, .4); }
+  .item-row:hover { background: rgba(255, 255, 255, .05); }
+  .item-row.highlight { box-shadow: inset 0 0 0 1px rgba(165, 180, 252, .45); }
+  .built-in-badge { border-color: rgba(125, 211, 252, .3); color: #7dd3fc; background: rgba(56, 189, 248, .12); }
+  .off-layout-badge { border-color: rgba(251, 191, 36, .35); color: #fcd34d; background: rgba(251, 191, 36, .12); }
+  [data-status][data-kind="success"] { color: #34d399; }
+  .picker-backdrop { background: rgba(0, 0, 0, .45); }
+  .picker { border-color: rgba(255, 255, 255, .1); background: rgba(34, 38, 49, .97); box-shadow: 0 30px 80px rgba(0, 0, 0, .55); }
+  .picker-choice, .picker-action { background: rgba(255, 255, 255, .05); }
+  .picker-choice:hover, .picker-action:hover {
+    border-color: rgba(165, 180, 252, .5); background: rgba(255, 255, 255, .1); box-shadow: 0 8px 20px rgba(0, 0, 0, .35);
+  }
+  .startup-message pre { background: rgba(255, 255, 255, .06); }
+
+  .popup-body #app {
+    background: linear-gradient(160deg, rgba(44, 48, 60, .72), rgba(26, 29, 37, .62));
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 0, 0, .45),
+      inset 0 0 0 2px rgba(255, 255, 255, .12);
+  }
+  .popup-body .window-action-icon { border-color: rgba(165, 180, 252, .35); background: rgba(255, 255, 255, .08); }
+  .popup-body .window-diagram { border-color: rgba(165, 180, 252, .85); }
+  .popup-body .window-diagram::after { background: rgba(165, 180, 252, .8); }
+
+  .keyboard-key {
+    border-color: rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .07);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .08);
+  }
+  .keyboard-key.assigned {
+    border-color: rgba(165, 180, 252, .4); background: rgba(255, 255, 255, .12);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, .4), inset 0 1px 0 rgba(255, 255, 255, .12);
+  }
+  .keyboard-key.reserved { border-color: rgba(125, 211, 252, .55); background: rgba(56, 189, 248, .16); color: #7dd3fc; }
+  .keyboard-key:hover { border-color: rgba(165, 180, 252, .55); background: rgba(255, 255, 255, .14); }
+  .keyboard-key > kbd { color: rgba(231, 234, 242, .62); }
+  .keyboard-back .keyboard-key:not(.assigned):not(.reserved),
+  .back-side .keyboard-key:not(.assigned):not(.reserved) {
+    border-color: rgba(251, 191, 36, .22); background: rgba(217, 119, 6, .14);
+  }
+  .layer-badge { color: #fcd34d; background: rgba(251, 191, 36, .2); }
+  /* 小人の手足は暗い線なので、暗い面では淡い縁取りで形を保つ。 */
+  .kobito svg { filter: drop-shadow(0 0 1px rgba(255, 255, 255, .55)) drop-shadow(0 3px 5px rgba(0, 0, 0, .4)); }
 }

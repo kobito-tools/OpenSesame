@@ -238,6 +238,7 @@ export function layoutKeys(layout: KeyboardLayout): Set<string> {
 export function fallbackGlyph(type: string, name: string): string {
   if (type === "folder") return "📁";
   if (type === "website") return "🌐";
+  if (type === "command") return "▶️";
   return name.slice(0, 1).toUpperCase();
 }
 
