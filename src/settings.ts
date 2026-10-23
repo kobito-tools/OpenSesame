@@ -19,6 +19,7 @@ import type {
   LauncherItem,
   Platform,
   RuntimeInfo,
+  SeriesApp,
   WindowActionBinding,
 } from "./types";
 
@@ -109,12 +110,14 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
 
   /** 表示中の盤面。真なら裏盤面（Shift）で、キーボード図も一覧もこちらに揃える。 */
   let back = false;
+  /** キーの無い組み込みのウィンドウ整形を広げて見せるか。描き直しても保つ。 */
+  let showUnassignedWindows = false;
   const onLayer = (entry: { shift?: boolean }) => (entry.shift ?? false) === back;
 
   /** 起動キー録音の状態。ホバー中に delete を押すと開始する。 */
   const recorder = { recording: false, pending: new Set<string>() };
 
-  const showStatus = (message: string, kind: "success" | "error" = "success") => {
+  const showStatus = (message: string, kind: "success" | "error" = "success", duration = 3600) => {
     const status = root.querySelector<HTMLElement>("[data-status]");
     if (!status) return;
     status.textContent = message;
@@ -122,7 +125,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     window.clearTimeout(statusTimer);
     statusTimer = window.setTimeout(() => {
       status.textContent = "";
-    }, 3600);
+    }, duration);
   };
 
   /** 保存できたかどうかを返す。失敗時は保存済みの設定へ戻す。 */
@@ -163,6 +166,46 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       const item = await invoke<LauncherItem>("create_website", {
         url,
         name: name || null,
+        key: key ?? null,
+        shift: back,
+      });
+      config.items.push(item);
+      return await save();
+    } catch (error) {
+      showStatus(translateError(error), "error");
+      return false;
+    }
+  };
+
+  /** 登録できたかどうかを返す。失敗時は入力欄を残して直せるようにする。 */
+  const addCommand = async (
+    command: string,
+    name: string,
+    workingDir: string,
+    key?: string,
+  ): Promise<boolean> => {
+    try {
+      const item = await invoke<LauncherItem>("create_command", {
+        command,
+        name: name || null,
+        workingDir: workingDir || null,
+        key: key ?? null,
+        shift: back,
+      });
+      config.items.push(item);
+      return await save();
+    } catch (error) {
+      showStatus(translateError(error), "error");
+      return false;
+    }
+  };
+
+  /** 設定に覚えるのはアプリIDと操作の id だけ。URL は押されたときに Rust 側が起動情報から読む。 */
+  const addSeriesAction = async (app: string, action: string, key?: string): Promise<boolean> => {
+    try {
+      const item = await invoke<LauncherItem>("create_series_action", {
+        app,
+        action,
         key: key ?? null,
         shift: back,
       });
@@ -296,8 +339,18 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     });
     const path = document.createElement("span");
     path.className = "target-path";
-    path.textContent = item.target.value;
-    path.title = item.target.value;
+    const dir = item.type === "command" ? item.target.working_dir : undefined;
+    if (item.type === "kobito-action") {
+      path.textContent = t("item.seriesAction", {
+        app: item.target.app ?? "",
+        action: item.target.action ?? "",
+      });
+    } else {
+      path.textContent = dir
+        ? t("item.commandIn", { command: item.target.value ?? "", dir })
+        : (item.target.value ?? "");
+    }
+    path.title = path.textContent;
     detail.append(name, path);
     const select = keySelect(item.id, item.key, false, (key) => {
       if (key) item.key = key;
@@ -337,6 +390,11 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     if (offLayout(item.key)) rowActions.append(offLayoutBadge());
     if (item.type === "application") rowActions.append(hideToggle(item));
     if (item.type === "website") rowActions.append(refetch);
+    if (item.type === "command") {
+      const edit = createButton(t("button.editCommand"), "button compact");
+      edit.addEventListener("click", () => openPicker(undefined, item));
+      rowActions.append(edit);
+    }
     rowActions.append(iconButton, remove);
     row.append(detail, select, rowActions);
     return row;
@@ -355,10 +413,14 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
   const closePicker = () => root.querySelector(".picker-backdrop")?.remove();
 
   /**
-   * 空いているキーを押したときの選択肢。選ぶとOSの選択UIか操作一覧、URL入力へ進む。
-   * `code` を省くとURL入力から始め、空いているキーを自動で割り当てる。
+   * 空いているキーを押したときの選択肢。選ぶとOSの選択UIか操作一覧、URLやコマンドの入力へ進む。
+   * `code` を省くと `start` の入力欄から始め、空いているキーを自動で割り当てる。
+   * `start` に登録済みのコマンドを渡すと、その編集になる。
    */
-  const openPicker = (code?: string) => {
+  const openPicker = (
+    code?: string,
+    start: "website" | "command" | "series" | LauncherItem = "website",
+  ) => {
     closePicker();
     const backdrop = document.createElement("div");
     backdrop.className = "picker-backdrop";
@@ -398,6 +460,8 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
           },
         ],
         ["picker.website", "picker.websiteDesc", paintWebsiteForm],
+        ["picker.command", "picker.commandDesc", () => paintCommandForm()],
+        ["picker.series", "picker.seriesDesc", () => void paintSeriesActions()],
       ];
       for (const [label, description, run] of choices) {
         const choice = document.createElement("button");
@@ -451,6 +515,73 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       card.append(title, list, footer);
     };
 
+    /**
+     * シリーズのアプリが起動情報に名乗った操作を、アプリごとに並べる。
+     * アプリの名前は起動情報から読んだものだけを出す。
+     */
+    const paintSeriesActions = async () => {
+      card.replaceChildren();
+      const title = document.createElement("strong");
+      title.textContent = code
+        ? t("picker.seriesTitle", { key: displayKey(code) })
+        : t("picker.series");
+      const lead = document.createElement("p");
+      lead.textContent = t("picker.seriesLoading");
+      const list = document.createElement("div");
+      list.className = "picker-series";
+      const backButton = createButton(t(code ? "picker.back" : "picker.cancel"), "button compact");
+      backButton.addEventListener("click", code ? paintChoices : closePicker);
+      const footer = document.createElement("div");
+      footer.className = "picker-footer";
+      footer.append(backButton);
+      card.append(title, lead, list, footer);
+      let apps: SeriesApp[] = [];
+      try {
+        apps = await invoke<SeriesApp[]>("list_series_actions");
+      } catch (error) {
+        showStatus(translateError(error), "error");
+      }
+      const english = config.language === "en";
+      lead.textContent = t(apps.length > 0 ? "picker.seriesLead" : "picker.seriesEmpty");
+      for (const app of apps) {
+        const group = document.createElement("section");
+        group.className = "picker-series-app";
+        const heading = document.createElement("span");
+        heading.className = "picker-series-name";
+        heading.textContent = english ? (app.name_en ?? app.name) : app.name;
+        const actions = document.createElement("div");
+        actions.className = "picker-actions";
+        for (const action of app.actions) {
+          const choice = document.createElement("button");
+          choice.type = "button";
+          choice.className = "picker-action";
+          choice.textContent = english ? (action.label_en ?? action.label) : action.label;
+          choice.addEventListener("click", async () => {
+            choice.disabled = true;
+            if (await addSeriesAction(app.app, action.id, code)) closePicker();
+            else choice.disabled = false;
+          });
+          actions.append(choice);
+        }
+        group.append(heading, actions);
+        list.append(group);
+      }
+    };
+
+    const field = (label: string, placeholder: string): [HTMLLabelElement, HTMLInputElement] => {
+      const wrapper = document.createElement("label");
+      wrapper.className = "picker-field";
+      const caption = document.createElement("span");
+      caption.textContent = label;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.placeholder = placeholder;
+      input.spellcheck = false;
+      input.autocapitalize = "off";
+      wrapper.append(caption, input);
+      return [wrapper, input];
+    };
+
     const paintWebsiteForm = () => {
       card.replaceChildren();
       const title = document.createElement("strong");
@@ -459,19 +590,6 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         : t("picker.website");
       const form = document.createElement("form");
       form.className = "picker-form";
-      const field = (label: string, placeholder: string): [HTMLLabelElement, HTMLInputElement] => {
-        const wrapper = document.createElement("label");
-        wrapper.className = "picker-field";
-        const caption = document.createElement("span");
-        caption.textContent = label;
-        const input = document.createElement("input");
-        input.type = "text";
-        input.placeholder = placeholder;
-        input.spellcheck = false;
-        input.autocapitalize = "off";
-        wrapper.append(caption, input);
-        return [wrapper, input];
-      };
       const [urlField, urlInput] = field(t("picker.websiteUrl"), "https://example.com");
       urlInput.required = true;
       const [nameField, nameInput] = field(t("picker.websiteName"), t("picker.websiteNameHint"));
@@ -503,8 +621,70 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       urlInput.focus();
     };
 
+    /** `editing` を渡すと、その登録済みコマンドを書き換える。 */
+    const paintCommandForm = (editing?: LauncherItem) => {
+      card.replaceChildren();
+      const title = document.createElement("strong");
+      title.textContent = editing
+        ? t("picker.commandEdit")
+        : code
+          ? t("picker.commandTitle", { key: displayKey(code) })
+          : t("picker.command");
+      const form = document.createElement("form");
+      form.className = "picker-form";
+      const [commandField, commandInput] = field(t("picker.commandLine"), t("picker.commandLineHint"));
+      commandInput.required = true;
+      const [dirField, dirInput] = field(t("picker.commandDir"), t("picker.commandDirHint"));
+      const pickDir = createButton(t("picker.commandDirPick"), "button compact");
+      pickDir.addEventListener("click", async () => {
+        const chosen = await invoke<string | null>("pick_folder");
+        if (chosen) dirInput.value = chosen;
+      });
+      const dirRow = document.createElement("div");
+      dirRow.className = "picker-field-row";
+      dirRow.append(dirInput, pickDir);
+      dirField.append(dirRow);
+      const [nameField, nameInput] = field(t("picker.commandName"), t("picker.commandNameHint"));
+      if (editing) {
+        commandInput.value = editing.target.value ?? "";
+        dirInput.value = editing.target.working_dir ?? "";
+        nameInput.value = editing.name;
+      }
+      const footer = document.createElement("div");
+      footer.className = "picker-footer";
+      const backButton = createButton(t(code ? "picker.back" : "picker.cancel"), "button compact");
+      backButton.addEventListener("click", code ? paintChoices : closePicker);
+      const submitLabel = t(editing ? "picker.commandSave" : "picker.websiteAdd");
+      const submit = createButton(submitLabel, "button compact primary");
+      submit.type = "submit";
+      footer.append(backButton, submit);
+      form.append(commandField, dirField, nameField, footer);
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const command = commandInput.value.trim();
+        if (!command) return;
+        const workingDir = dirInput.value.trim();
+        submit.disabled = true;
+        if (editing) {
+          // 保存に失敗したときは save が保存済みの設定へ戻すので、ここで書き換えてよい。
+          editing.target.value = command;
+          editing.target.working_dir = workingDir || undefined;
+          editing.name = nameInput.value.trim() || editing.name;
+          if (await save()) closePicker();
+          return;
+        }
+        const added = await addCommand(command, nameInput.value.trim(), workingDir, code);
+        if (added) closePicker();
+        else submit.disabled = false;
+      });
+      card.append(title, form);
+      commandInput.focus();
+    };
+
     if (code) paintChoices();
-    else paintWebsiteForm();
+    else if (start === "website") paintWebsiteForm();
+    else if (start === "series") void paintSeriesActions();
+    else paintCommandForm(start === "command" ? undefined : start);
     root.append(backdrop);
     if (!code) backdrop.querySelector<HTMLInputElement>(".picker-field input")?.focus();
   };
@@ -564,8 +744,25 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     const apps = sortedItems.filter((item) => item.type === "application");
     const folders = sortedItems.filter((item) => item.type === "folder");
     const websites = sortedItems.filter((item) => item.type === "website");
+    const commands = sortedItems.filter((item) => item.type === "command");
+    const seriesActions = sortedItems.filter((item) => item.type === "kobito-action");
     container.append(sectionLabel(t("section.window"), t("section.window.desc")));
-    for (const action of sortedWindows) container.append(windowRow(action));
+    // キーの無い組み込みの操作は数が多く、登録したものを下へ押し出すので畳んでおく。
+    const unassignedWindows = sortedWindows.filter((binding) => !binding.key);
+    for (const action of sortedWindows) if (action.key) container.append(windowRow(action));
+    if (unassignedWindows.length > 0) {
+      const group = document.createElement("details");
+      group.className = "unassigned-group";
+      group.open = showUnassignedWindows;
+      group.addEventListener("toggle", () => {
+        showUnassignedWindows = group.open;
+      });
+      const summary = document.createElement("summary");
+      summary.textContent = t("section.window.unassigned", { count: unassignedWindows.length });
+      group.append(summary);
+      for (const action of unassignedWindows) group.append(windowRow(action));
+      container.append(group);
+    }
     container.append(sectionLabel(t("section.apps"), t("section.count", { count: apps.length })));
     for (const item of apps) container.append(itemRow(item));
     container.append(
@@ -576,6 +773,14 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       sectionLabel(t("section.websites"), t("section.count", { count: websites.length })),
     );
     for (const item of websites) container.append(itemRow(item));
+    container.append(
+      sectionLabel(t("section.commands"), t("section.count", { count: commands.length })),
+    );
+    for (const item of commands) container.append(itemRow(item));
+    container.append(
+      sectionLabel(t("section.series"), t("section.count", { count: seriesActions.length })),
+    );
+    for (const item of seriesActions) container.append(itemRow(item));
   };
 
   /**
@@ -740,7 +945,8 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
 
   const paint = () => {
     const keyboardScroll = root.querySelector<HTMLElement>("[data-keyboard]")?.scrollLeft ?? 0;
-    const listScroll = root.querySelector<HTMLElement>("[data-items]")?.scrollTop ?? 0;
+    // 設定画面はページ全体が縦に動くので、描き直しの前後で位置を保つ。
+    const pageScroll = root.scrollTop;
     root.replaceChildren();
     const shell = document.createElement("main");
     shell.className = "settings-shell";
@@ -842,7 +1048,11 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     const addSite = createButton(t("button.addWebsite"));
     addFolder.addEventListener("click", () => void addTarget("folder"));
     addSite.addEventListener("click", () => openPicker());
-    actions?.append(addApp, addFolder, addSite);
+    const addCommandButton = createButton(t("button.addCommand"));
+    addCommandButton.addEventListener("click", () => openPicker(undefined, "command"));
+    const addSeriesButton = createButton(t("button.addSeries"));
+    addSeriesButton.addEventListener("click", () => openPicker(undefined, "series"));
+    actions?.append(addApp, addFolder, addSite, addCommandButton, addSeriesButton);
 
     shell.querySelector<HTMLElement>("[data-keyboard]")?.append(keyboardPreview());
     const items = shell.querySelector<HTMLElement>("[data-items]");
@@ -851,11 +1061,14 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
 
     const keyboard = root.querySelector<HTMLElement>("[data-keyboard]");
     if (keyboard) keyboard.scrollLeft = keyboardScroll;
-    const list = root.querySelector<HTMLElement>("[data-items]");
-    if (list) list.scrollTop = listScroll;
+    root.scrollTop = pageScroll;
   };
 
   paint();
+  // コマンドがすぐに失敗したときは、Rust側が設定画面を開いてから知らせてくる。
+  await listen<string>("launch-failed", ({ payload }) => {
+    showStatus(translateError(payload), "error", 15000);
+  });
   // 権限が付与されるとRust側が自動で監視を開始するので、案内の出し入れも追従させる。
   await listen<string | null>("input-monitor-status", ({ payload }) => {
     const next = payload ?? null;

@@ -7,11 +7,17 @@ OpenSesame! の中身の構造、ビルド方法、配布手順をまとめて�
 
 | 層 | 技術 | 役割 |
 |---|---|---|
-| バックエンド | Rust / Tauri 2 | 設定保存、グローバルキーフック、対象の起動、ウィンドウ整形、アイコンキャッシュ、トレイ |
+| バックエンド | Rust / Tauri 2 | 設定保存、グローバルキーフック、対象の起動、コマンドの実行、kobito シリーズの起動情報、ウィンドウ整形、アイコンキャッシュ、トレイ |
 | フロントエンド | Vanilla TypeScript / Vite | 設定画面と、フォーカスを奪わないポップアップ |
 
 ```
 .
+├── kobito-app.json            # kobito シリーズの目印（下の「自分の起動情報を書く」）
+├── kobito/                    # アイコンの元 icon.svg と、その 1024px の書き出し icon-1024.png（シリーズの決まった場所）
+├── setup.sh                   # 初期設定（macOS）。共通の手順 docs/kobito-spec/setup.zsh を読み込む
+├── Setup.command              # setup.sh を Finder から動かす入口
+├── build.sh                   # 手元で使う OpenSesame!.app を作る（macOS）
+├── scripts/make-icons.sh      # kobito/icon.svg から、icon-1024.png と src-tauri/icons/ を作り直す
 ├── index.html                 # 設定画面・ポップアップ共通のエントリ
 ├── src/                       # フロントエンド
 │   ├── main.ts                # ウィンドウのラベルで設定画面かポップアップかを振り分け
@@ -26,6 +32,8 @@ OpenSesame! の中身の構造、ビルド方法、配布手順をまとめて�
 │   ├── src/
 │   │   ├── lib.rs             # コマンド定義、起動処理、トレイ
 │   │   ├── input.rs           # キー入力の状態遷移（OS非依存）と、Windowsのフック
+│   │   ├── command.rs         # 登録したコマンドの実行と、すぐ失敗したときの知らせ
+│   │   ├── series.rs          # kobito シリーズの起動情報（自分の分の書き出しと、ほかのアプリの操作の読み込み）
 │   │   ├── instance.rs        # 二重起動の防止（新しい版を残し、旧版を終了させる）
 │   │   ├── tap_macos.rs       # macOSのキーフック（CGEventTap）
 │   │   ├── keys.rs            # 物理キーの正規名と対応表
@@ -33,12 +41,12 @@ OpenSesame! の中身の構造、ビルド方法、配布手順をまとめて�
 │   │   ├── storage.rs         # 設定の読み書きと移行
 │   │   ├── icons.rs           # アイコンのキャッシュ
 │   │   └── model.rs           # 設定ファイルの構造
-│   ├── icons/                 # アプリアイコン（source.svg が元データ）
+│   ├── icons/                 # Tauri が使うアプリアイコン（scripts/make-icons.sh が kobito/icon.svg から作る）
 │   ├── capabilities/          # フロントエンドに許可するTauri API
 │   ├── Info.plist             # macOS用の追加項目（Apple Eventsの説明文）
 │   └── tauri.conf.json
 ├── .github/workflows/         # CI と リリースビルド
-└── docs/
+└── docs/                      # この文書と、シリーズの規格の写し kobito-spec/（手で書き換えない）
 ```
 
 ## 開発環境
@@ -60,10 +68,21 @@ npm run tauri dev
 npm run tauri build
 ```
 
+手元で使う `.app` だけを作る場合（macOS）は、`./build.sh` を実行します。`npm ci` と `tauri build --bundles app` を行い、このフォルダ直下に `OpenSesame!.app` を置きます。ソースから使う人向けの入口は `setup.sh` です（道具の確かめ・ビルド・アプリケーションフォルダへ移すかの確認・起動情報の書き出し・許可と起動の案内。`--yes`・`--dry-run`・`--help` を受け付けます）。引数の読み方・表示・尋ね方は、シリーズ共通の `docs/kobito-spec/setup.zsh` を読み込んで使います。`Setup.command` は `setup.sh` を Finder からダブルクリックで動かすための入口です。試すときは `KOBITO_APPLICATIONS_DIR` に一時フォルダを指すと、実際のアプリケーションフォルダに触れません。
+
 テスト:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml
+npx tsc --noEmit
+```
+
+起動情報が約束どおりかは、作った `.app` で書き出して、`docs/kobito-spec/CONTRACTS.md` の「④ 起動情報」と見比べます。`KOBITO_CONFIG_DIR` を一時フォルダにすれば、本物の起動情報には触れません。
+
+```bash
+export KOBITO_CONFIG_DIR="$(mktemp -d)"
+"./OpenSesame!.app/Contents/MacOS/OpenSesame" --write-launch-info
+cat "$KOBITO_CONFIG_DIR/apps/opensesame.json"
 ```
 
 `npm run build` はフロントエンド（`dist/`）を生成するだけです。アプリ本体はRustバイナリが `dist/` を取り込んでコンパイルされるため、**変更を反映するには `tauri dev` か `tauri build` が必要**です。
@@ -72,7 +91,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 GitHub Actions（`.github/workflows/release.yml`）が macOS（ユニバーサル版 `.dmg`）と Windows（`-setup.exe` / `.msi`）のインストーラーを作ります。
 
-1. `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json` の `version` を揃えて上げる
+1. `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`kobito-app.json` の `version` を揃えて上げる（`cargo test` が揃っているかを確かめます）
 2. コミットして `main` に push する
 3. バージョンのタグを付けて push する
 
@@ -93,13 +112,13 @@ macOS版は `bundle.macOS.signingIdentity` に `-` を指定し、ad-hoc 署名�
 
 ## アイコン
 
-元データは `src-tauri/icons/source.svg` です。PNG（1024×1024、透過）に書き出して `src-tauri/icons/source.png` を置き換え、次を実行します。
+元データは `kobito/icon.svg` です（シリーズの決まった場所）。書き換えたら、`npm ci` のあとで次を実行します。
 
 ```bash
-npm run tauri icon src-tauri/icons/source.png
+./scripts/make-icons.sh
 ```
 
-`tauri icon` は Android / iOS / Windowsストア向けの画像も生成しますが、本アプリはデスクトップのみなので、`tauri.conf.json` の `bundle.icon` に載っていないファイルは削除して構いません。`bundle.icon` には `.icns` と `.ico` を必ず含めてください。PNGだけを指定すると1サイズのみの `.icns` が生成され、Finderがアイコンを描けません。
+`tauri icon` で、`kobito/icon-1024.png`（1024×1024）と、`tauri.conf.json` の `bundle.icon` に載せている `src-tauri/icons/` の画像（`32x32.png`・`128x128.png`・`128x128@2x.png`・`icon.icns`・`icon.ico`）を作り直します。Android / iOS / Windowsストア向けの画像は写しません。`bundle.icon` には `.icns` と `.ico` を必ず含めてください。PNGだけを指定すると1サイズのみの `.icns` が生成され、Finderがアイコンを描けません。
 
 ## データ保存先
 
@@ -115,11 +134,78 @@ npm run tauri icon src-tauri/icons/source.png
 - v3: 旧形式の起動キー名（`LeftControl` / `LeftOption` など）を `ControlLeft` / `AltLeft` へ正規化
 - v4: `settings_layout` と `popup.layout` を `keyboard_layout` へ統合し、`language` を追加
 
+項目を足しただけで、古い形のまま読めるときは版を上げません。読み込みのたびに補う方式（ウィンドウ整形の追加）か、`serde` の既定値で読みます。
+
+- コマンドの種類（`"type": "command"`）と `target.working_dir` は、版を上げずに足しました。`working_dir` は無ければ「指定なし」として読み、指定なしの項目には書き出しません。そのため、これより前の設定ファイルはそのまま読めます（`storage.rs` のテストで確かめています）。
+- 逆に、コマンドを登録した設定ファイルを、コマンドに対応していない古い版で開くと、読めずに `config.json.broken-<時刻>` へ退避されます。
+- シリーズの操作（`"type": "kobito-action"`）と `target.app`・`target.action` も、版を上げずに足しました。`target.value` は、空なら書き出さず、無ければ空として読みます。ほかの種類の項目は、読んで書き戻しても形が変わりません（`storage.rs` のテストで確かめています）。シリーズの操作を登録した設定ファイルを古い版で開いたときは、コマンドと同じく退避されます。
+
+### 登録項目の形
+
+| 種類（`type`） | `target.kind` | `target.value` | ほかの項目 |
+|---|---|---|---|
+| `application` | `path` | アプリのパス | `hide_when_frontmost` |
+| `folder` | `path` | フォルダのパス | |
+| `website` | `url` | http(s) の URL | |
+| `command` | `command` | 1行のコマンド | `target.working_dir`（任意） |
+| `kobito-action` | `kobito-action` | （書かない） | `target.app`（アプリID）・`target.action`（操作の `id`） |
+
+## コマンドの実行
+
+`command.rs` が受け持ちます。
+
+| OS | 動かし方 | ねらい |
+|---|---|---|
+| macOS | `/bin/zsh -lc <コマンド>` | GUIのアプリは PATH が短いので、ログインシェルで `~/.zprofile` などを読ませ、ターミナルと同じコマンドが見つかるようにする |
+| Windows | `cmd /C <コマンド>`（`raw_arg` でそのまま渡す、`CREATE_NO_WINDOW`） | cmd 独自の引用符の規則を崩さず、黒い窓も出さない |
+
+- 終わるのを待たずに起動し、後始末（`wait`）は別スレッドで行います。標準入力と標準出力は捨て、エラー出力は詰まらないよう最後まで読み捨てます（先頭の300バイトだけ残す）。
+- 起動できなかったとき、または3秒以内に失敗で終わったときは、`applauncher-error:command-failed:<終了コード> — <エラー出力の最後の行>` などを `launch-failed` イベントで送り、設定画面を開きます。設定画面はこれを翻訳して知らせ欄に出します。
+- 作業フォルダが無いときは `missing-working-dir` で知らせます。保存のときも、新しく指定した作業フォルダだけは存在を確かめます（パスの項目と同じく、登録済みのものが後から消えても編集や削除はできます）。
+- コマンドの中身は確かめません。保存のときに確かめるのは、空でないことと1行であることだけです。
+
+## kobito シリーズの起動情報
+
+`series.rs` が受け持ちます。形は `docs/kobito-spec/CONTRACTS.md` の「④ 起動情報」、考え方は `docs/kobito-spec/APP_INTERFACE.md` に従います。ほかのアプリの名前はコードに書きません（名乗られたものを表示するだけ）。
+
+置き場所は PC 固有領域の `kobito-tools/apps/<アプリID>.json` です（macOS は `~/Library/Application Support/`、Windows は `%APPDATA%\`）。環境変数 `KOBITO_CONFIG_DIR` があれば、その中の `apps/` を使います（テスト用）。
+
+### 自分の起動情報を書く
+
+```json
+{
+  "app": "opensesame",
+  "name": "OpenSesame!",
+  "command": ["/Applications/OpenSesame!.app/Contents/MacOS/OpenSesame"],
+  "name_en": "OpenSesame!",
+  "color": "gray",
+  "icon": { "file": "/Applications/OpenSesame!.app/Contents/Resources/kobito/icon.svg", "glyph": "🔑" }
+}
+```
+
+- 起動のたびに（`setup` の中で）書き直します。書けなくても起動は止めません。
+- `command` は今動いている実行ファイル（`std::env::current_exe()`）です。`embed` は書きません（ユーティリティアプリはほかのアプリの中に表示しない）。`actions` も持ちません。
+- アイコンは、シリーズの決まりどおり `kobito/icon.svg` を指します。`tauri.conf.json` の `bundle.resources` でリポジトリの `kobito/icon.svg` を `.app` の中に同じ `kobito/icon.svg` として入れ、実行ファイルの場所から求めます（macOS は `Contents/Resources/`、Windows は実行ファイルの隣）。リポジトリの画像を指さないのは、`.app` をアプリケーションフォルダへ移したあと、アプリがリポジトリの場所を知る手段が無いためです。画像が無い・256 KB を超えるときは `file` を書かず、`glyph` だけを名乗ります。
+- 書くときは同じフォルダの一時ファイルに書いてから置き換えます。
+- `--write-launch-info` を付けて起動すると、書いてすぐ終わります（書いたパスを標準出力に出す。失敗したら終了コード 1）。`run()` の最初、二重起動の処理（`instance::take_over_or_exit`）より前で調べるので、動いている OpenSesame! を終わらせず、画面もキーの監視も始めません。`setup.sh` は、`.app` をアプリケーションフォルダへ移すかを決めたあとに、置いた場所の `.app` でこれを動かします。
+- `--metadata` を付けて起動すると、起動情報と同じ JSON を標準出力に出してすぐ終わります（何も書きません）。`--write-launch-info` と同じく、二重起動の処理より前で調べます（`series::exit_if_only_printing_metadata`）。
+- リポジトリの直下の `kobito-app.json` は、シリーズの決まり（`docs/kobito-spec/APP_PACKAGE.md`）の目印です。アプリの形で配るので `"kind": "native"` と書き、`launch.py` は持ちません（登録は `setup.sh` と `--write-launch-info`）。アプリID・表示名は `series.rs`、`bundle_id` は `tauri.conf.json` の `identifier`、`version` は `tauri.conf.json`・`Cargo.toml`・`package.json` とそろえます（`series::tests::the_marker_names_this_app_as_a_native_series_app` が、`package`・`tagline` と `kobito/` のアイコンも含めて確かめます）。リポジトリの形が決まりどおりかは、kobito シリーズの確かめの道具（`docs/kobito-spec/APP_PACKAGE.md` §12）で調べられます。
+
+### ほかのアプリの操作を開く
+
+- 設定画面の「シリーズの操作」は `list_series_actions` で、`apps/*.json` をすべて読み、操作（`actions`）を名乗っているアプリを名前の順に返します。読み方は共通部品（`kit.contracts.launch`）と揃えています。`app`・`name`・`command` が欠けている・形が違う起動情報と、ファイル名とアプリIDが合わない起動情報は捨てます。操作は、宛先がほかのアプリID・`{today}` 以外の `{…}` を含む・`id` が重なるものを1件ずつ捨てます。
+- 登録（`create_series_action`）で設定に覚えるのは、アプリIDと操作の `id` だけです。表示名は「アプリ名 › 操作の名前」（英語表示なら `name_en`・`label_en`）。`icon.file` が PNG なら、ほかの項目と同じくデータ領域の `icons/system/` へ写します（画面はデータ領域の画像しか出せないため。SVG は写せないので名前の1文字目を出す）。
+- キーが押されたら、その時点の起動情報を読み直し、`{today}` をこの PC の今日の日付（`YYYY-MM-DD`）に置き換えて、`command` の後ろに URL を足し、シェルを通さずに動かします（`command::launch_program`）。④の決まりのとおりで、OS に `kobito://` を開かせることはしません（`uv run` のアプリは URL スキームを登録できないため）。ほかのアプリの中に表示されているアプリへは届けません。
+- 起動情報や操作が見つからないときは `series-app-missing`・`series-action-missing`、起動できない・3秒以内に失敗したときはコマンドと同じ `command-spawn-failed`・`command-failed` を `launch-failed` イベントで送り、設定画面の知らせ欄に出します。
+- 保存のときは、アプリIDの形と、操作の `id` が空でないことだけを確かめます。起動情報が無くても保存できます（アプリを消しても、名前やキーは変えられるように）。
+
 ## セキュリティ上の設計
 
 - ネットワーク通信は行いません。キー入力はメモリ上で判定するだけで、記録も送信もしません。
 - 設定画面には CSP（`tauri.conf.json` の `app.security.csp`）を設定し、外部スクリプトの読み込みを禁止しています。
 - フロントエンドに公開している Tauri API は `capabilities/default.json` の既定権限のみです。ファイルの読み取りは `assetProtocol` でアプリのデータ領域（`$APPLOCALDATA`）に限っています。
+- シリーズの操作は、起動情報の `command` と、名乗られた URL（自分のアプリID宛てで、置き換えは `{today}` だけ）を、シェルを通さずに渡します。設定には URL もコマンドも残さず、押されたときに Rust 側が起動情報を読み直します。
+- 登録したコマンドは、利用者が入れた文字列をそのままシェルに渡します。画面から渡せるのは保存済みの設定だけで、キーを押したときに Rust 側が設定から読んで動かします（フロントエンドから任意のコマンドを動かす入口はありません）。
 - 登録名やパスなど利用者由来の文字列は `textContent` / 属性で描画し、HTML文字列には埋め込みません。
 
 ## macOSの権限
@@ -152,7 +238,8 @@ Windows では rdev の `grab`（低レベルキーボードフック）を使�
 
 ## 対応範囲
 
-- アプリ / フォルダの登録
+- アプリ / フォルダ / Webサイト / コマンド / シリーズの操作の登録
+- kobito シリーズの起動情報（④）の書き出し（起動のたびと `--write-launch-info`）
 - 前面ウィンドウの10種類のレイアウト整形
 - 物理キー A–Z、0–9、記号、Enter / Space / Tab / Backspace / Esc、矢印キーへの割り当て
 - 起動キー（修飾キー1〜3個）のキー入力による編集

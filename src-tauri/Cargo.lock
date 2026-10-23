@@ -2821,8 +2821,9 @@ dependencies = [
 
 [[package]]
 name = "opensesame"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
+ "chrono",
  "file_icon_provider",
  "image",
  "objc2",
