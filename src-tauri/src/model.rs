@@ -61,27 +61,15 @@ pub enum TargetType {
     Website,
     /// シェルで1行のコマンドを動かす。`target.value` がコマンドそのもの。
     Command,
-    /// シリーズのほかのアプリが起動情報（④）に名乗った操作。
-    /// `target.app` と `target.action` だけを覚え、押されたときに起動情報を読み直す。
-    #[serde(rename = "kobito-action")]
-    KobitoAction,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TargetPath {
     pub kind: String,
-    /// パス・URL・コマンド。シリーズの操作では使わない（空のときは書かない）。
-    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub value: String,
     /// コマンドを動かすフォルダ。コマンド以外では使わない。省略時はホームフォルダ。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_dir: Option<String>,
-    /// シリーズの操作の、アプリID。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub app: Option<String>,
-    /// シリーズの操作の、操作の `id`。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub action: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

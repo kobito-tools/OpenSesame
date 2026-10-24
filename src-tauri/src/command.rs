@@ -98,21 +98,6 @@ pub fn launch(
     watch(spawn(command, working_dir), on_failure);
 }
 
-/// シェルを通さずに、`program` の1つ目を実行ファイル、残りを引数として動かす。
-/// 失敗の知らせ方は `launch` と同じ。ホームフォルダで動かす。
-pub fn launch_program(program: &[String], on_failure: impl FnOnce(String) + Send + 'static) {
-    let Some((executable, arguments)) = program.split_first() else {
-        on_failure(crate::error("command-spawn-failed", ""));
-        return;
-    };
-    let mut process = Command::new(executable);
-    process.args(arguments);
-    if let Some(home) = home_dir() {
-        process.current_dir(home);
-    }
-    watch(start(process), on_failure);
-}
-
 fn watch(spawned: Result<Child, String>, on_failure: impl FnOnce(String) + Send + 'static) {
     let mut child = match spawned {
         Ok(child) => child,
@@ -200,30 +185,6 @@ mod tests {
     fn a_quick_failure_is_reported_with_its_exit_code() {
         let message = run("echo broken >&2; exit 3", None).expect("should report");
         assert_eq!(message, "applauncher-error:command-failed:3 — broken");
-    }
-
-    fn run_program(program: &[&str]) -> Option<String> {
-        let (sender, receiver) = mpsc::channel();
-        let program: Vec<String> = program.iter().map(|part| part.to_string()).collect();
-        launch_program(&program, move |message| {
-            let _ = sender.send(message);
-        });
-        receiver.recv_timeout(Duration::from_secs(5)).ok()
-    }
-
-    #[test]
-    fn programs_get_their_arguments_without_a_shell() {
-        // シェルを通さないので、$HOME や ; はそのまま1つの引数として届く。
-        let message = run_program(&["/bin/sh", "-c", "echo \"$0\" >&2; exit 4", "a;$HOME b"])
-            .expect("should report");
-        assert_eq!(message, "applauncher-error:command-failed:4 — a;$HOME b");
-        assert_eq!(run_program(&["/usr/bin/true"]), None);
-    }
-
-    #[test]
-    fn a_missing_program_is_reported() {
-        let message = run_program(&["/nonexistent/opensesame"]).expect("should report");
-        assert!(message.starts_with("applauncher-error:command-spawn-failed:"));
     }
 
     #[test]
