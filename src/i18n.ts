@@ -61,14 +61,12 @@ const ja = {
   "section.folders": "フォルダ",
   "section.websites": "Webサイト",
   "section.commands": "コマンド",
-  "section.series": "シリーズの操作",
   "section.count": "{count}件",
 
   "button.addApp": "＋ アプリ",
   "button.addFolder": "＋ フォルダ",
   "button.addWebsite": "＋ Webサイト",
   "button.addCommand": "＋ コマンド",
-  "button.addSeries": "＋ シリーズの操作",
   "button.icon": "アイコン",
   "button.refetchIcon": "アイコン再取得",
   "button.editCommand": "編集",
@@ -88,7 +86,6 @@ const ja = {
 
   "item.windowHint": "現在のウィンドウを整形",
   "item.commandIn": "{command}（{dir} で実行）",
-  "item.seriesAction": "シリーズの操作（アプリID {app}・操作 {action}）",
   "item.hideWhenFrontmost": "前面なら隠す",
   "item.hideWhenFrontmostHint": "このアプリが前面にあるときにもう一度押すと隠します（Windowsでは最小化）",
 
@@ -119,12 +116,6 @@ const ja = {
   "picker.commandName": "表示名",
   "picker.commandNameHint": "省略するとコマンドの最初の語になります",
   "picker.commandSave": "保存",
-  "picker.series": "シリーズの操作",
-  "picker.seriesDesc": "kobito シリーズのアプリが名乗った操作を開きます（新しいメモなど）",
-  "picker.seriesTitle": "{key} キーに割り当てるシリーズの操作",
-  "picker.seriesLead": "この PC に入っている kobito シリーズのアプリが、起動情報に名乗った操作です。",
-  "picker.seriesEmpty": "操作を名乗っているアプリが見つかりません。シリーズのアプリを一度起動するか、setup.sh を動かすと並びます。",
-  "picker.seriesLoading": "読み込んでいます…",
   "picker.chooseAction": "{key} キーに割り当てるウィンドウ操作",
   "picker.back": "戻る",
   "picker.cancel": "キャンセル",
@@ -173,9 +164,6 @@ const ja = {
   "error.missing-working-dir": "作業フォルダが見つかりません: {0}",
   "error.command-spawn-failed": "コマンドを起動できませんでした: {0}",
   "error.command-failed": "コマンドがすぐに終わりました（終了コード {0}）",
-  "error.series-app-missing": "シリーズのアプリの起動情報が見つかりません: {0}",
-  "error.series-action-missing": "その操作は、もう名乗られていません: {0}",
-  "error.invalid-series-action": "シリーズの操作の指定が不正です",
 } as const;
 
 export type MessageKey = keyof typeof ja;
@@ -233,14 +221,12 @@ const en: Record<MessageKey, string> = {
   "section.folders": "Folders",
   "section.websites": "Websites",
   "section.commands": "Commands",
-  "section.series": "Series actions",
   "section.count": "{count}",
 
   "button.addApp": "＋ App",
   "button.addFolder": "＋ Folder",
   "button.addWebsite": "＋ Website",
   "button.addCommand": "＋ Command",
-  "button.addSeries": "＋ Series action",
   "button.icon": "Icon",
   "button.refetchIcon": "Refetch icon",
   "button.editCommand": "Edit",
@@ -260,7 +246,6 @@ const en: Record<MessageKey, string> = {
 
   "item.windowHint": "Resize the frontmost window",
   "item.commandIn": "{command} (runs in {dir})",
-  "item.seriesAction": "Series action (app ID {app}, action {action})",
   "item.hideWhenFrontmost": "Hide if in front",
   "item.hideWhenFrontmostHint": "Press again while this app is in front to hide it (minimize on Windows)",
 
@@ -291,12 +276,6 @@ const en: Record<MessageKey, string> = {
   "picker.commandName": "Display name",
   "picker.commandNameHint": "Defaults to the first word of the command",
   "picker.commandSave": "Save",
-  "picker.series": "Series action",
-  "picker.seriesDesc": "Open an action that a kobito series app offers, such as a new memo",
-  "picker.seriesTitle": "Series action for the {key} key",
-  "picker.seriesLead": "Actions that the kobito series apps on this PC offer in their launch info.",
-  "picker.seriesEmpty": "No app offers an action yet. Start a series app once, or run its setup.sh, and its actions appear here.",
-  "picker.seriesLoading": "Loading…",
   "picker.chooseAction": "Window layout for the {key} key",
   "picker.back": "Back",
   "picker.cancel": "Cancel",
@@ -345,9 +324,6 @@ const en: Record<MessageKey, string> = {
   "error.missing-working-dir": "Working folder not found: {0}",
   "error.command-spawn-failed": "Could not start the command: {0}",
   "error.command-failed": "The command stopped right away (exit code {0})",
-  "error.series-app-missing": "Launch info for this series app was not found: {0}",
-  "error.series-action-missing": "The app no longer offers this action: {0}",
-  "error.invalid-series-action": "Invalid series action",
 };
 
 const DICTIONARIES: Record<Language, Record<MessageKey, string>> = { ja, en };
