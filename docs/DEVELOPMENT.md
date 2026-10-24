@@ -33,7 +33,7 @@ OpenSesame! の中身の構造、ビルド方法、配布手順をまとめて�
 │   │   ├── lib.rs             # コマンド定義、起動処理、トレイ
 │   │   ├── input.rs           # キー入力の状態遷移（OS非依存）と、Windowsのフック
 │   │   ├── command.rs         # 登録したコマンドの実行と、すぐ失敗したときの知らせ
-│   │   ├── series.rs          # kobito シリーズの起動情報（自分の分の書き出しと、ほかのアプリの操作の読み込み）
+│   │   ├── series.rs          # kobito シリーズの起動情報（自分の分の書き出し）
 │   │   ├── instance.rs        # 二重起動の防止（新しい版を残し、旧版を終了させる）
 │   │   ├── tap_macos.rs       # macOSのキーフック（CGEventTap）
 │   │   ├── keys.rs            # 物理キーの正規名と対応表
@@ -138,7 +138,7 @@ macOS版は `bundle.macOS.signingIdentity` に `-` を指定し、ad-hoc 署名�
 
 - コマンドの種類（`"type": "command"`）と `target.working_dir` は、版を上げずに足しました。`working_dir` は無ければ「指定なし」として読み、指定なしの項目には書き出しません。そのため、これより前の設定ファイルはそのまま読めます（`storage.rs` のテストで確かめています）。
 - 逆に、コマンドを登録した設定ファイルを、コマンドに対応していない古い版で開くと、読めずに `config.json.broken-<時刻>` へ退避されます。
-- シリーズの操作（`"type": "kobito-action"`）と `target.app`・`target.action` も、版を上げずに足しました。`target.value` は、空なら書き出さず、無ければ空として読みます。ほかの種類の項目は、読んで書き戻しても形が変わりません（`storage.rs` のテストで確かめています）。シリーズの操作を登録した設定ファイルを古い版で開いたときは、コマンドと同じく退避されます。
+- 以前の版にあった「シリーズの操作」（`"type": "kobito-action"`）は、種類から外しました。その項目が残った設定ファイルは、読み込むときにその項目だけを捨て、ほかの項目はそのまま読んで、捨てたあとの形で書き戻します（退避はしません。`storage.rs` のテストで確かめています）。
 
 ### 登録項目の形
 
@@ -148,7 +148,6 @@ macOS版は `bundle.macOS.signingIdentity` に `-` を指定し、ad-hoc 署名�
 | `folder` | `path` | フォルダのパス | |
 | `website` | `url` | http(s) の URL | |
 | `command` | `command` | 1行のコマンド | `target.working_dir`（任意） |
-| `kobito-action` | `kobito-action` | （書かない） | `target.app`（アプリID）・`target.action`（操作の `id`） |
 
 ## コマンドの実行
 
@@ -166,7 +165,7 @@ macOS版は `bundle.macOS.signingIdentity` に `-` を指定し、ad-hoc 署名�
 
 ## kobito シリーズの起動情報
 
-`series.rs` が受け持ちます。形は `docs/kobito-spec/CONTRACTS.md` の「④ 起動情報」、考え方は `docs/kobito-spec/APP_INTERFACE.md` に従います。ほかのアプリの名前はコードに書きません（名乗られたものを表示するだけ）。
+`series.rs` が受け持ちます。形は `docs/kobito-spec/CONTRACTS.md` の「④ 起動情報」、考え方は `docs/kobito-spec/APP_INTERFACE.md` に従います。ほかのアプリの名前はコードに書きません。
 
 置き場所は PC 固有領域の `kobito-tools/apps/<アプリID>.json` です（macOS は `~/Library/Application Support/`、Windows は `%APPDATA%\`）。環境変数 `KOBITO_CONFIG_DIR` があれば、その中の `apps/` を使います（テスト用）。
 
@@ -191,20 +190,11 @@ macOS版は `bundle.macOS.signingIdentity` に `-` を指定し、ad-hoc 署名�
 - `--metadata` を付けて起動すると、起動情報と同じ JSON を標準出力に出してすぐ終わります（何も書きません）。`--write-launch-info` と同じく、二重起動の処理より前で調べます（`series::exit_if_only_printing_metadata`）。
 - リポジトリの直下の `kobito-app.json` は、シリーズの決まり（`docs/kobito-spec/APP_PACKAGE.md`）の目印です。アプリの形で配るので `"kind": "native"` と書き、`launch.py` は持ちません（登録は `setup.sh` と `--write-launch-info`）。アプリID・表示名は `series.rs`、`bundle_id` は `tauri.conf.json` の `identifier`、`version` は `tauri.conf.json`・`Cargo.toml`・`package.json` とそろえます（`series::tests::the_marker_names_this_app_as_a_native_series_app` が、`package`・`tagline` と `kobito/` のアイコンも含めて確かめます）。リポジトリの形が決まりどおりかは、kobito シリーズの確かめの道具（`docs/kobito-spec/APP_PACKAGE.md` §12）で調べられます。
 
-### ほかのアプリの操作を開く
-
-- 設定画面の「シリーズの操作」は `list_series_actions` で、`apps/*.json` をすべて読み、操作（`actions`）を名乗っているアプリを名前の順に返します。読み方は共通部品（`kit.contracts.launch`）と揃えています。`app`・`name`・`command` が欠けている・形が違う起動情報と、ファイル名とアプリIDが合わない起動情報は捨てます。操作は、宛先がほかのアプリID・`{today}` 以外の `{…}` を含む・`id` が重なるものを1件ずつ捨てます。
-- 登録（`create_series_action`）で設定に覚えるのは、アプリIDと操作の `id` だけです。表示名は「アプリ名 › 操作の名前」（英語表示なら `name_en`・`label_en`）。`icon.file` が PNG なら、ほかの項目と同じくデータ領域の `icons/system/` へ写します（画面はデータ領域の画像しか出せないため。SVG は写せないので名前の1文字目を出す）。
-- キーが押されたら、その時点の起動情報を読み直し、`{today}` をこの PC の今日の日付（`YYYY-MM-DD`）に置き換えて、`command` の後ろに URL を足し、シェルを通さずに動かします（`command::launch_program`）。④の決まりのとおりで、OS に `kobito://` を開かせることはしません（`uv run` のアプリは URL スキームを登録できないため）。ほかのアプリの中に表示されているアプリへは届けません。
-- 起動情報や操作が見つからないときは `series-app-missing`・`series-action-missing`、起動できない・3秒以内に失敗したときはコマンドと同じ `command-spawn-failed`・`command-failed` を `launch-failed` イベントで送り、設定画面の知らせ欄に出します。
-- 保存のときは、アプリIDの形と、操作の `id` が空でないことだけを確かめます。起動情報が無くても保存できます（アプリを消しても、名前やキーは変えられるように）。
-
 ## セキュリティ上の設計
 
 - ネットワーク通信は行いません。キー入力はメモリ上で判定するだけで、記録も送信もしません。
 - 設定画面には CSP（`tauri.conf.json` の `app.security.csp`）を設定し、外部スクリプトの読み込みを禁止しています。
 - フロントエンドに公開している Tauri API は `capabilities/default.json` の既定権限のみです。ファイルの読み取りは `assetProtocol` でアプリのデータ領域（`$APPLOCALDATA`）に限っています。
-- シリーズの操作は、起動情報の `command` と、名乗られた URL（自分のアプリID宛てで、置き換えは `{today}` だけ）を、シェルを通さずに渡します。設定には URL もコマンドも残さず、押されたときに Rust 側が起動情報を読み直します。
 - 登録したコマンドは、利用者が入れた文字列をそのままシェルに渡します。画面から渡せるのは保存済みの設定だけで、キーを押したときに Rust 側が設定から読んで動かします（フロントエンドから任意のコマンドを動かす入口はありません）。
 - 登録名やパスなど利用者由来の文字列は `textContent` / 属性で描画し、HTML文字列には埋め込みません。
 
@@ -238,7 +228,7 @@ Windows では rdev の `grab`（低レベルキーボードフック）を使�
 
 ## 対応範囲
 
-- アプリ / フォルダ / Webサイト / コマンド / シリーズの操作の登録
+- アプリ / フォルダ / Webサイト / コマンドの登録
 - kobito シリーズの起動情報（④）の書き出し（起動のたびと `--write-launch-info`）
 - 前面ウィンドウの10種類のレイアウト整形
 - 物理キー A–Z、0–9、記号、Enter / Space / Tab / Backspace / Esc、矢印キーへの割り当て
