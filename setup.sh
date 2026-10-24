@@ -10,6 +10,7 @@ EXEC_NAME="OpenSesame"
 RUSTUP_URL="https://sh.rustup.rs"
 
 kobito_steps=(
+  "同じアプリIDのリポジトリが、別の場所に記されていないかを確かめる（かぶっていれば何も変えずに止まる）"
   "Xcode Command Line Tools・Node.js 20 以降があるかを確かめる（無ければ入れ方を表示して止まる）"
   "Rust があるかを確かめる（無ければ、公式の手順 rustup で入れるかを尋ねる）"
   "$APP_NAME.app をビルドする（数分かかる）"
@@ -19,6 +20,8 @@ kobito_steps=(
   "許可（アクセシビリティ）の案内を表示する"
 )
 kobito_setup "$APP_NAME" "$@"
+# ビルド・起動情報より前に確かめる（あとで止まると、起動情報だけがこのリポジトリに変わって repos/ と食い違う）。
+kobito_check_repository
 # Finder から開いたときにも、Homebrew で入れた Node.js が見つかるようにする（build.sh と同じ）。
 path=($path /opt/homebrew/bin /usr/local/bin)
 
