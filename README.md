@@ -1,236 +1,227 @@
 # OpenSesame!
 
+English | [日本語](README.ja.md)
+
 <img src="kobito/icon-1024.png" width="96" align="right" alt="">
 
-OpenSesame! は、キーを押している間だけ表示される macOS / Windows 用のランチャーです。
+OpenSesame! is a launcher for macOS that appears only while you hold down a key.
 
-起動キー（初期設定では macOS は左 Control + 左 Option、Windows は左 Ctrl + 左 Alt）を押している間、キーボード型のパネルが表示されます。そのまま割り当てたキーを押すと、アプリケーションやフォルダ、Webサイトを開いたり、コマンドを実行したり、前面のウィンドウを画面の左半分・右半分などに配置したりできます。
+Hold the activation keys (Left Control + Left Option by default) and a keyboard-shaped panel appears. Press one of your assigned keys to open an app, a folder or a website, run a command, or snap the frontmost window to the left half, right half and more.
 
-kobito シリーズの1つです。ほかのアプリとは、約束（`docs/kobito-spec/CONTRACTS.md`）のデータの形だけでつながります。シリーズについては [kobito-tools](https://github.com/kobito-tools) を参照してください。
+OpenSesame! is part of [kobito-tools](https://github.com/kobito-tools), a series of small Mac apps.
 
-![デモ](docs/images/demo.gif)
+![Demo](docs/images/demo.gif)
 
-## 動作環境
+## What it can do
 
-- macOS 11 以降（Apple Silicon / Intel）
-- Windows 10 / 11（64 ビット）
-
-## ダウンロード
-
-[Releases](../../releases/latest) ページから、お使いの OS に対応したファイルをダウンロードしてください。
-
-| OS | ファイル |
+| Type | What happens when you press the key |
 |---|---|
-| macOS | `OpenSesame!_x.y.z_universal.dmg` |
-| Windows | `OpenSesame!_x.y.z_x64-setup.exe` |
+| Window layout | Moves and resizes the frontmost window: halves, quarters, thirds, two thirds, center, maximize |
+| App | Launches the app, or brings it to the front. It can also hide the app if it is already in front |
+| Folder | Opens the folder in Finder |
+| Website | Opens the URL in your default browser |
+| Command | Runs a one-line terminal command, such as `uv run app.py` |
 
-`x.y.z` にはバージョン番号が入ります。
+Each key can hold two items: one on the main layer and one on the Shift layer.
 
-## インストール
+## Requirements
 
-### macOS
+- macOS 11 or later (Apple Silicon or Intel)
 
-1. ダウンロードした `.dmg` ファイルを開きます。
-2. OpenSesame! を Applications フォルダにドラッグします。
-3. アプリケーションフォルダから OpenSesame! を起動します。
+## Download and install
 
-本アプリは Apple の公証を受けていないため、初回起動時に「開発元を確認できません」などの警告が表示されます。その場合は警告を閉じ、「システム設定」→「プライバシーとセキュリティ」を開いて、画面下部の「このまま開く」をクリックしてください。2 回目以降は通常どおり起動できます。
+1. Download `OpenSesame!_x.y.z_universal.dmg` from the [latest release](../../releases/latest). `x.y.z` is the version number.
+2. Open the `.dmg` and drag OpenSesame! into the Applications folder.
+3. Launch OpenSesame! from the Applications folder.
 
-「壊れているため開けません」と表示される場合は、ターミナルで次のコマンドを実行してから、再度起動してください。
+> **Note:** Launch it from the Applications folder. If you run it from somewhere else, such as Downloads, macOS may not keep the permissions below.
+
+You can also build the app yourself from the source code. A self-built app does not show the warning below. See [Build from source](#build-from-source).
+
+### First launch: the “unidentified developer” warning
+
+OpenSesame! is not notarized by Apple, so the first launch shows a warning such as “cannot verify the developer”. Close the warning, open **System Settings → Privacy & Security**, and click **Open Anyway** near the bottom. After that, it opens normally.
+
+If macOS says the app “is damaged and can’t be opened”, run this in Terminal and launch it again:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/OpenSesame!.app"
 ```
 
-> **注意:** アプリケーションフォルダ以外の場所（ダウンロードフォルダなど）から起動すると、次の手順で設定する許可が保持されない場合があります。
+### Allow Accessibility
 
-#### ソースから作る
+OpenSesame! needs Accessibility permission to notice your key presses while you are using other apps. On first launch, the settings window shows a guide.
 
-警告を出さずに入れたい場合は、このリポジトリをクローンして、ターミナルで `./setup.sh` を実行します（Finder から `Setup.command` をダブルクリックしても同じです）。手元で作ったアプリには、ダウンロードしたときに付く隔離の印が無いため、上の警告は出ません。
+1. Click **Open Accessibility settings** in the guide.
+2. Click **+** below the list and add OpenSesame! from the Applications folder.
+3. Turn on the switch next to OpenSesame!.
 
-- 必要なもの：Xcode Command Line Tools・Node.js 20 以降・Rust
-  - Rust が無いときは、公式の手順（rustup）で入れるかを尋ねます。
-  - Xcode Command Line Tools と Node.js が無いときは、入れ方を表示して止まります。
-- ビルドが終わると、`OpenSesame!.app` をアプリケーションフォルダの `kobito-tools` フォルダ（`/Applications/kobito-tools/`）へ移すかを尋ねます。フォルダが無ければ作り、シリーズのアイコンを付けます。すでに `OpenSesame!.app` がある場合は、置き換えてよいかを尋ねます。移さなかったときは、このフォルダにできた `OpenSesame!.app` を自分で移して起動します。
-- `/Applications` の直下に以前の `OpenSesame!.app` が残っていても、消しません。使わなければ、自分でゴミ箱へ移してください。
-- 最後に、置いた場所の `OpenSesame!.app` で起動情報を書き出します（下の「kobito シリーズとのつながり」）。画面は開かず、動いている OpenSesame! も止めません。あわせて、このリポジトリの場所を PC 固有領域の `kobito-tools/repos/opensesame` にシンボリックリンクで記します。
-- 別の場所にある OpenSesame! のリポジトリ（同じアプリID）がすでに記されているときは、ビルドの前に、何も変えずに止まります。使うほうを決めて、表示される直し方に従ってください。
-- `./setup.sh --help` で使い方を、`./setup.sh --dry-run` で何をするかを（何も変えずに）確かめられます。何度実行しても大丈夫です。
-- 作り直した場合は、アクセシビリティの一覧から OpenSesame! を「－」で消して、追加し直してください（作るたびに署名が変わるため、以前の許可が効かなくなります）。
+Within a few seconds the guide disappears and OpenSesame! starts listening. You do not need to restart it.
 
-#### アクセシビリティの許可
+### Allow Automation
 
-OpenSesame! は、他のアプリケーションを操作している間もキー入力を検知するため、macOS のアクセシビリティの許可を必要とします。初回起動時に設定画面に案内が表示されるので、次の手順で許可してください。
+The first time you use a window layout, macOS asks whether “OpenSesame!” may control “System Events”. Click **Allow**.
 
-1. 案内の「アクセシビリティ設定を開く」をクリックします。
-2. 一覧の下にある「＋」をクリックし、アプリケーションフォルダから OpenSesame! を追加します。
-3. OpenSesame! のスイッチをオンにします。
+### Switch the settings window to English
 
-許可が有効になると、数秒で案内が消えてキー入力の監視が始まります。アプリの再起動は不要です。
+The settings window starts in Japanese. Use the language menu at the top right to choose **English**. The menu bar items follow the language the next time OpenSesame! starts.
 
-#### オートメーションの許可
+## How to use
 
-ウィンドウ配置の機能を初めて使用すると、「“OpenSesame!”が“System Events”を制御しようとしています」という確認が表示されます。「許可」をクリックしてください。
+### Basic keys
 
-### Windows
-
-1. ダウンロードした `-setup.exe` ファイルを実行します。
-2. 「Windows によって PC が保護されました」と表示された場合は、「詳細情報」をクリックしてから「実行」をクリックします。この画面は、本アプリがコード署名されていないために表示されます。
-3. インストーラーの指示に従ってインストールします。
-
-Windows では、追加の許可設定は必要ありません。
-
-## 使い方
-
-### 基本操作
-
-| 操作 | 動作 |
+| Keys | What happens |
 |---|---|
-| 起動キーを押し続ける | パネルを表示します |
-| 起動キー + 割り当てたキー | アプリケーション・フォルダ・Webサイトを開く、コマンドを実行する、またはウィンドウを配置します |
-| 起動キー + Shift | 裏盤面に切り替えます。Shift を離すと表盤面に戻ります |
-| 起動キー + Shift + 割り当てたキー | 裏盤面に割り当てた項目を実行します |
-| 起動キー + `.`（ピリオド） | 設定画面を開きます |
-| 起動キーを離す | パネルを閉じます |
+| Hold the activation keys | Shows the panel |
+| Activation keys + an assigned key | Runs that item: opens an app, folder or website, runs a command, or lays out the window |
+| Activation keys + Shift | Switches to the Shift layer. Release Shift to go back |
+| Activation keys + Shift + an assigned key | Runs the item on the Shift layer |
+| Activation keys + `.` (period) | Opens the settings window |
+| Release the activation keys | Hides the panel |
 
-設定画面を閉じても、OpenSesame! はバックグラウンドで動作し続けます。
+Closing the settings window does not quit OpenSesame!. It keeps running in the background.
 
-### 項目を登録する
+### Assign a key
 
-1. 設定画面上部のキーボード図で、割り当てていないキーをクリックします。
-2. 「ウィンドウサイズ変更」「アプリの起動」「フォルダの選択」「Webサイトを開く」「コマンドを実行」のいずれかを選択します。
-3. アプリケーションまたはフォルダを選択した場合は、表示されたダイアログで対象を指定します。Webサイトを選択した場合は、URL（`https://` は省略可）と表示名を入力します。Webサイトは既定のブラウザで開きます。コマンドを選択した場合は、下の「コマンドを登録する」を見てください。
+1. In the keyboard at the top of the settings window, click a free key.
+2. Choose **Window layout**, **Launch an app**, **Open a folder**, **Open a website** or **Run a command**.
+3. For an app or a folder, pick it in the dialog. For a website, enter the URL (`https://` can be left out) and a display name. For a command, see [Run a command](#run-a-command).
 
-設定画面右上の「＋ アプリ」「＋ フォルダ」「＋ Webサイト」「＋ コマンド」から登録することもできます。この場合、空いているキーが自動的に割り当てられます。
+You can also use **＋ App**, **＋ Folder**, **＋ Website** and **＋ Command** at the top right. They assign a free key for you.
 
-登録した項目は、設定画面下部の一覧で表示名や割り当てキーを変更できます。「アイコン」をクリックすると、任意の PNG 画像をアイコンとして設定できます。
+In the list at the bottom of the settings window, you can change an item’s display name and key. Drag an assigned key onto another key on the keyboard to move it. Click **Icon** to use any PNG image as the icon.
 
-アプリの「前面なら隠す」をオンにすると、そのアプリが前面にあるときにもう一度キーを押すとアプリを隠します（Windows では最小化します）。押すたびに表示と非表示を切り替えられます。
+For apps, turn on **Hide if in front** to hide the app when you press its key while it is already in front. Each press then switches between showing and hiding it.
 
-### コマンドを登録する
+### Run a command
 
-ターミナルで打つコマンドを、そのままキーに割り当てられます。たとえば Python で作ったアプリを `uv run app.py` で起動する、といった使い方ができます。
+You can assign the same command you would type in Terminal, for example `uv run app.py` to start a Python app.
 
-| 欄 | 入れるもの |
+| Field | What to enter |
 |---|---|
-| コマンド（1行） | ターミナルで打つのと同じコマンド。改行は入れられません。`&&` でつなげば、いくつかのコマンドを順に動かせます |
-| 作業フォルダ（任意） | コマンドを動かすフォルダ。「選ぶ…」で選べます。空のときはホームフォルダで動きます |
-| 表示名 | パネルと一覧に出る名前。空のときはコマンドの最初の語になります |
+| Command (one line) | The command, as you would type it in Terminal. No line breaks. Join several commands with `&&` to run them in order |
+| Working folder (optional) | The folder to run the command in. Use **Choose…** to pick one. Empty means your home folder |
+| Display name | The name shown on the panel and in the list. Empty means the first word of the command |
 
-- **macOS** では、ログインシェル（`/bin/zsh -l`）を通して動かします。`~/.zprofile` で通した PATH が読まれるので、ターミナルで使える `uv` などのコマンドがそのまま見つかります。`~/.zshrc` だけで PATH を通している場合は見つからないことがあるので、`~/.zprofile` にも書くか、コマンドをフルパス（例: `~/.local/bin/uv run app.py`）で書いてください。
-- **Windows** では、`cmd /C` で動かします。コマンドプロンプトの窓は出ません。
-- コマンドは終わるのを待たずに動かします。起動できなかったときや、動かしてすぐ（3秒以内）にエラーで終わったときは、設定画面が開いて、下の知らせ欄に終了コードとエラーの最後の行が出ます。
-- コマンドの出力（画面に出る文字）は表示しません。
-- 登録したコマンドは、一覧の「編集」で書き換えられます。アイコンは「アイコン」から PNG 画像を選べます（選ばないときは ▶️ を出します）。
+- The command runs through a login shell (`/bin/zsh -l`). The `PATH` you set in `~/.zprofile` is loaded, so commands such as `uv` that work in Terminal are found. If you set `PATH` only in `~/.zshrc`, the command may not be found. Add it to `~/.zprofile` too, or write the full path (for example `~/.local/bin/uv run app.py`).
+- OpenSesame! starts the command and does not wait for it to finish. If the command cannot start, or exits with an error right away (within 3 seconds), the settings window opens and shows the exit code and the last line of the error at the bottom.
+- The command’s output is not shown.
+- Use **Edit** in the list to change a command. Use **Icon** to pick a PNG image (▶️ is shown otherwise).
 
-> **注意:** 登録したコマンドは、キーを押すたびにそのまま実行されます。中身の分かっているコマンドだけを登録してください。
+> **Warning:** A registered command runs as is every time you press its key. Register only commands you understand.
 
-### 裏盤面（Shift）を使う
+### Use the Shift layer
 
-キーボード図の右上で「裏盤面（Shift）」に切り替えると、表盤面とは別の割り当てを登録できます。同じキーでも、表盤面と裏盤面で別々の項目を割り当てられます。裏盤面の項目は、起動キーに加えて Shift を押しながらキーを押すと実行されます。
+Switch the keyboard at the top right to **Shift layer** to assign a second set of items. The same key can hold one item on the main layer and another on the Shift layer. To run a Shift-layer item, hold Shift as well as the activation keys.
 
-起動キーに Shift を含めている場合、そちらの Shift は裏盤面の切り替えに使われません（左 Shift を起動キーにしている場合は、右 Shift で切り替えます）。
+If Shift is one of your activation keys, that Shift does not switch layers. For example, if Left Shift is an activation key, use Right Shift for the Shift layer.
 
-### 起動キーを変更する
+### Change the activation keys
 
-1. 設定画面の「起動キー」欄にマウスポインタを合わせ、delete キー（Windows では Backspace キー）を押します。
-2. 使用したい修飾キーを同時に押し、離します。
+1. Hover over the **Activation keys** field in the settings window and press delete.
+2. Press the modifier keys you want together, then release them.
 
-Control、Option（Alt）、Command（Windows キー）、Shift のうち最大 3 つまで組み合わせることができ、左右のキーは区別されます。変更を取り消すには、手順 2 の前に Esc キーを押します。
+You can combine up to three of Control, Option, Command and Shift. Left and right keys are told apart. Shift alone cannot be used. To cancel, press Esc before step 2.
 
-### 表示を切り替える
+### Change the language and keyboard layout
 
-設定画面右上で、表示言語（日本語 / English）とキーボード配列（JIS 配列 / 英字配列）を切り替えられます。
+At the top right of the settings window, switch the language (日本語 / English) and the keyboard layout (JIS / ANSI).
 
-### ログイン時に自動で起動する
+### Open at login
 
-- **macOS:** 「システム設定」→「一般」→「ログイン項目」を開き、「ログイン時に開く」の「＋」から OpenSesame! を追加します。
-- **Windows:** `Windows キー + R` を押して `shell:startup` を実行し、開いたフォルダに OpenSesame! のショートカットを配置します。
+Open **System Settings → General → Login Items**, click **+** under “Open at Login”, and add OpenSesame!.
 
-### 終了する
+### Quit
 
-メニューバー（Windows ではタスクバーの通知領域）の OpenSesame! アイコンをクリックし、「OpenSesame! を終了」を選択します。
+Click the OpenSesame! icon in the menu bar and choose **Quit OpenSesame!**.
 
-## トラブルシューティング
+## Troubleshooting
 
-### 起動キーを押してもパネルが表示されない（macOS）
+### The panel does not appear
 
-- アクセシビリティの許可が有効になっているか確認してください。アプリを更新した後に動作しなくなった場合は、一覧から OpenSesame! を「－」で削除し、再度追加してください。
-- VoiceOver を使用している場合、初期設定の起動キー（Control + Option）が VoiceOver の操作キーと重複します。起動キーを変更してください。
+- Make sure Accessibility permission is turned on. If it stopped working after an update, select OpenSesame! in the Accessibility list, remove it with **−**, and add it again.
+- If you use VoiceOver, the default activation keys (Control + Option) are the same as the VoiceOver modifier. Change the activation keys.
 
-### 起動キーを押してもパネルが表示されない（Windows）
+### Windows are not laid out
 
-管理者権限で実行されているアプリケーションが前面にある場合、Windows の仕様によりキー入力を検知できません。
+Open **System Settings → Privacy & Security → Automation** and make sure “System Events” is turned on under OpenSesame!.
 
-### ウィンドウが配置されない（macOS）
+### “Target not found” appears and settings cannot be saved
 
-「システム設定」→「プライバシーとセキュリティ」→「オートメーション」で、OpenSesame! の「System Events」がオンになっているか確認してください。
+A registered app or folder was moved or deleted, or it is on an external drive that is not connected. Remove the item from the list, or connect the drive.
 
-### 「対象が見つかりません」と表示され、設定を保存できない
+### Nothing happens when I press a command’s key
 
-登録したアプリケーションやフォルダが移動・削除されているか、外付けドライブが接続されていません。一覧から該当する項目を削除するか、ドライブを接続してください。
+If the bottom of the settings window says the command stopped right away with exit code 127, the command was not found. Check your `PATH` or use the full path, as described in [Run a command](#run-a-command). The last line of the command’s error follows the exit code.
 
-### コマンドを登録したキーを押しても何も起きない
+### “Some items are turned off” appears
 
-設定画面の知らせ欄に「コマンドがすぐに終わりました（終了コード 127 …）」と出た場合は、コマンドが見つかっていません。上の「コマンドを登録する」にあるとおり、PATH の設定か、コマンドのフルパスを確かめてください。終了コードの後ろには、コマンドが出したエラーの最後の行が付きます。
+The config file (`config.json`) holds entries that the settings window would not save. For example, a website URL that does not start with `http://` or `https://`, or an app or folder location written as a URL. Something other than OpenSesame! may have changed the config file.
 
-### 知らせ欄に「動かさない項目があります」と出た
+The items listed there do nothing when you press their keys. If you do not recognize an item, remove it from the list. If you do, remove it and register it again (a command can be fixed with **Edit**). You can remove or fix them one at a time and save.
 
-設定ファイル（`config.json`）に、設定画面からは保存できない中身があります。たとえば、Webサイトの URL が `http://`・`https://` で始まらない、アプリやフォルダの場所が URL になっている、といったものです。OpenSesame! 以外のものが設定ファイルを書き換えた可能性があります。
+### My settings went back to the defaults
 
-知らせ欄に出た項目は、キーを押しても動きません。覚えのない項目なら一覧から削除してください。覚えのある項目なら、削除してから登録し直してください（コマンドは編集して直せます）。1件ずつ消したり直したりして保存できます。
+If the config file was damaged, OpenSesame! keeps the original as `config.json.broken-<number>` and starts with the default settings. You can find that file in the settings folder listed in [Uninstall](#uninstall).
 
-### 設定が初期状態に戻った
+## Uninstall
 
-設定ファイルが破損していた場合、OpenSesame! は元のファイルを `config.json.broken-<数字>` という名前で保存し、初期設定で起動します。このファイルは下記の設定フォルダにあります。
+1. Quit OpenSesame!.
+2. Move OpenSesame! from the Applications folder to the Trash. If you installed it with `setup.sh`, it is inside the `kobito-tools` folder.
+3. In **System Settings → Privacy & Security → Accessibility**, select OpenSesame! and remove it with **−**.
 
-## アンインストール
+To remove your settings as well, delete this folder:
 
-### macOS
+- `~/Library/Application Support/io.github.kobito-tools.opensesame`
 
-1. OpenSesame! を終了します。
-2. アプリケーションフォルダの OpenSesame! をゴミ箱に移動します（`setup.sh` で入れた場合は `kobito-tools` フォルダの中にあります）。
-3. 「システム設定」→「プライバシーとセキュリティ」→「アクセシビリティ」の一覧から OpenSesame! を選択し、「－」で削除します。
+To also remove the launch info file (see [Working with other apps](#working-with-other-apps)), delete this file:
 
-### Windows
+- `~/Library/Application Support/kobito-tools/apps/opensesame.json`
 
-1. OpenSesame! を終了します。
-2. 「設定」→「アプリ」→「インストールされているアプリ」から OpenSesame! をアンインストールします。
+## Privacy
 
-### 設定の削除
+OpenSesame! does not use the network. Key presses are used only to detect the activation keys and the assigned keys. They are never recorded or sent anywhere. Your settings are stored only on your Mac.
 
-設定も削除する場合は、次のフォルダを削除してください。
+## For developers
 
-- **macOS:** `~/Library/Application Support/io.github.kobito-tools.opensesame`
-- **Windows:** `%LOCALAPPDATA%\io.github.kobito-tools.opensesame`
+### Build from source
 
-起動情報（下の「kobito シリーズとのつながり」）も消す場合は、次のファイルを削除してください。
+To install without the warning on first launch, clone this repository and run `./setup.sh` in Terminal (or double-click `Setup.command` in Finder). An app you build yourself has no quarantine flag from a download, so the warning does not appear.
 
-- **macOS:** `~/Library/Application Support/kobito-tools/apps/opensesame.json`
-- **Windows:** `%APPDATA%\kobito-tools\apps\opensesame.json`
+- You need Xcode Command Line Tools, Node.js 20 or later, and Rust.
+  - If Rust is missing, it asks whether to install it with the official installer (rustup).
+  - If Xcode Command Line Tools or Node.js is missing, it shows how to install them and stops.
+- After the build, it asks whether to move `OpenSesame!.app` into the `kobito-tools` folder in Applications (`/Applications/kobito-tools/`). If the folder does not exist, it creates it and gives it the series icon. If `OpenSesame!.app` is already there, it asks before replacing it. You can say no and still use the app: `OpenSesame!.app` stays in the repository folder, and you can move it yourself.
+- An older `OpenSesame!.app` directly in `/Applications` is left alone. If you no longer use it, move it to the Trash yourself.
+- At the end, it writes the launch info using the installed `OpenSesame!.app` (see [Working with other apps](#working-with-other-apps)). It does not open a window or stop a running OpenSesame!. It also records the repository location as a symbolic link at `kobito-tools/repos/opensesame` under `~/Library/Application Support/`.
+- If another OpenSesame! repository (with the same app ID) is already recorded there, it stops before building and changes nothing. Decide which one to use and follow the instructions it shows.
+- `./setup.sh --help` shows the options, and `./setup.sh --dry-run` shows what it would do without changing anything. It is safe to run more than once.
+- After a rebuild, remove OpenSesame! from the Accessibility list with **−** and add it again. Each build has a new signature, so the old permission no longer applies.
 
-## kobito シリーズとのつながり
+For build details and the source layout, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (in Japanese).
 
-OpenSesame! は、起動するたびに、自分の起動のしかたと見せ方（名前・色・アイコン）を「起動情報」として PC の中に書き出します。シリーズのほかのアプリは、これを読んで OpenSesame! を起動ボタンとして並べます。OpenSesame! はユーティリティなので、ほかのアプリの中には表示しません。
+### Working with other apps
 
-- 置き場所：macOS は `~/Library/Application Support/kobito-tools/apps/opensesame.json`、Windows は `%APPDATA%\kobito-tools\apps\opensesame.json`
-- 画面を開かずに書き出すだけのときは、`OpenSesame!.app/Contents/MacOS/OpenSesame --write-launch-info` を実行します。書き出してすぐ終わります。
-- 書き出すのは起動のしかたと見せ方だけで、設定や登録した項目は書きません。
-- 書き出さずに、同じ内容を画面（標準出力）に出すだけのときは `--metadata` を付けます。
-- リポジトリの直下の `kobito-app.json` は、kobito シリーズのアプリであることを示す目印で、`kobito/` にアイコン（`icon.svg`・`icon-1024.png`）を置いています（アプリの形で配るので `"kind": "native"`。決まりは `docs/kobito-spec/APP_PACKAGE.md`）。
+OpenSesame! connects to other apps only through the data formats defined in `docs/kobito-spec/CONTRACTS.md`.
 
-## プライバシー
+Each time it starts, OpenSesame! writes how to launch it and how to show it (name, color and icon) as “launch info” on your Mac. Other apps in the series read this file to show OpenSesame! as a launch button. OpenSesame! is a utility, so it does not show up inside other apps.
 
-OpenSesame! はネットワーク通信を行いません。キー入力は、起動キーと割り当てキーの判定にのみ使用し、記録や外部への送信は行いません。設定はお使いのコンピューター内にのみ保存されます。
+- Location: `~/Library/Application Support/kobito-tools/apps/opensesame.json`
+- To write the file without opening a window, run `OpenSesame!.app/Contents/MacOS/OpenSesame --write-launch-info`. It writes the file and exits.
+- Only how to launch and show the app is written. Your settings and registered items are not.
+- To print the same content to standard output without writing the file, use `--metadata`.
+- `kobito-app.json` at the repository root marks this as a kobito-tools app. The icons (`icon.svg`, `icon-1024.png`) are in `kobito/`. It is shipped as an app, so its kind is `"native"` (see `docs/kobito-spec/APP_PACKAGE.md`).
 
-## ライセンス
+### Issues
 
-本ソフトウェアは [MIT License](LICENSE) のもとで提供されています。
+Bug reports and requests are welcome in [Issues](../../issues).
 
-本ソフトウェアは現状のまま提供され、いかなる保証もありません。本ソフトウェアの使用によって生じたいかなる損害についても、作者は責任を負いません。詳細は [LICENSE](LICENSE) を参照してください。
+### How this was made
 
-## 開発について
+OpenSesame! was developed with the help of ChatGPT (OpenAI) and Claude (Anthropic). This is a personal project and is not affiliated with OpenAI or Anthropic.
 
-本ソフトウェアの開発には、ChatGPT（OpenAI）および Claude（Anthropic）を使用しています。本プロジェクトは個人によるものであり、OpenAI および Anthropic とは関係ありません。
+### License
 
-ビルド方法やソースコードの構成については、[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) を参照してください。不具合の報告や要望は [Issues](../../issues) で受け付けています。
+OpenSesame! is released under the [MIT License](LICENSE).
+
+The software is provided “as is”, without warranty of any kind. The author is not liable for any damage arising from its use. See [LICENSE](LICENSE) for details.
