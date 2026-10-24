@@ -391,9 +391,21 @@ pub(crate) fn error(code: &str, argument: &str) -> String {
 /// 対象の存在確認は新規登録やパス変更のときだけ行う。
 /// 登録済みの対象が後から消えても、名前やキーの変更・削除はできるようにするため。
 /// 存在確認より前の検査は、ファイルから読んだときと同じ `config_problems` を使う。
+/// ただし、保存済みの設定に前からあって手を付けていない問題は通す。
+/// 外で書き換えられた項目が何件あっても、1件ずつ消したり直したりして保存できるようにするため。
+/// 通した項目は保存後も `config_problems` に挙がるので、動かさないままになる。
 fn validate_config(config: &LauncherConfig, previous: &LauncherConfig) -> Result<(), String> {
-    if let Some(problem) = config_problems(config).into_iter().next() {
-        return Err(problem.error);
+    let carried = config_problems(previous);
+    for problem in config_problems(config) {
+        let unchanged = match &problem.item_id {
+            Some(id) => same_item(config, previous, id),
+            None => carried.iter().any(|saved| {
+                saved.item_id.is_none() && saved.name == problem.name && saved.error == problem.error
+            }),
+        };
+        if !unchanged {
+            return Err(problem.error);
+        }
     }
     for item in &config.items {
         match item.target_type {
@@ -481,6 +493,18 @@ pub(crate) fn item_problem(config: &LauncherConfig, item_id: &str) -> Option<Str
         .into_iter()
         .find(|problem| problem.item_id.as_deref() == Some(item_id))
         .map(|problem| problem.error)
+}
+
+/// 同じIDの項目が、保存済みの設定と中身まで同じかどうか。
+fn same_item(config: &LauncherConfig, previous: &LauncherConfig, id: &str) -> bool {
+    let find = |config: &LauncherConfig| {
+        config
+            .items
+            .iter()
+            .find(|item| item.id == id)
+            .and_then(|item| serde_json::to_value(item).ok())
+    };
+    matches!((find(config), find(previous)), (Some(now), Some(saved)) if now == saved)
 }
 
 /// 表盤面と裏盤面は別々のキーとして扱う。
@@ -1086,22 +1110,62 @@ mod tests {
         for id in ["ok", "site", "cmd"] {
             assert_eq!(item_problem(&config, id), None, "{id} should run");
         }
-        // 保存済みと同じ中身でも、画面から保存するときに弾く。
+        // 新しく入れるときは、画面から保存しても弾く。
         assert_eq!(
-            validate_config(&config, &config).unwrap_err(),
+            validate_config(&config, &LauncherConfig::default()).unwrap_err(),
             "applauncher-error:invalid-url:javascript:alert(1)"
         );
     }
 
+    /// 外で書き換えられた項目が2件あっても、1件ずつ消したり直したりして保存できる。
+    /// 手を付けていない項目は通すが、動かさないまま知らせに残る。
     #[test]
-    fn a_saved_app_whose_path_became_a_url_cannot_be_saved_again() {
+    fn bad_items_can_be_removed_or_fixed_one_at_a_time() {
         let mut saved = LauncherConfig::default();
-        let mut app = item_at("app", "KeyA", "https://example.com");
+        saved.items.push(website_item("js", "KeyS", "javascript:alert(1)"));
+        saved.items.push(command_item("two-lines", "echo a\necho b", None));
+        saved.items.push(item_at("ok", "KeyA", "/"));
+        // 関係ない項目の名前を変えるだけの保存も通る。
+        let mut renamed = saved.clone();
+        renamed.items[2].name = "Root".into();
+        assert!(validate_config(&renamed, &saved).is_ok());
+        assert!(item_problem(&renamed, "js").is_some());
+        // 1件消す。
+        let mut removed = renamed.clone();
+        removed.items.remove(0);
+        assert!(validate_config(&removed, &renamed).is_ok());
+        assert!(item_problem(&removed, "two-lines").is_some());
+        // 残りを直す。直し方が足りなければ弾く。
+        let mut still_bad = removed.clone();
+        still_bad.items[0].target.value = "echo c\necho d".into();
+        assert_eq!(
+            validate_config(&still_bad, &removed).unwrap_err(),
+            "applauncher-error:invalid-command"
+        );
+        let mut fixed = removed.clone();
+        fixed.items[0].target.value = "echo a".into();
+        assert!(validate_config(&fixed, &removed).is_ok());
+        assert!(config_problems(&fixed).is_empty());
+    }
+
+    #[test]
+    fn a_bad_value_cannot_be_written_into_a_saved_item() {
+        let mut saved = LauncherConfig::default();
+        let mut app = item_at("app", "KeyA", "/");
         app.target_type = TargetType::Application;
         saved.items.push(app);
+        let mut edited = saved.clone();
+        edited.items[0].target.value = "https://example.com".into();
         assert_eq!(
-            validate_config(&saved, &saved).unwrap_err(),
+            validate_config(&edited, &saved).unwrap_err(),
             "applauncher-error:invalid-path:https://example.com"
+        );
+        // 保存済みの不正な値を、別の不正な値に変えるのも弾く。
+        let mut moved = edited.clone();
+        moved.items[0].target.value = "file:///Users".into();
+        assert_eq!(
+            validate_config(&moved, &edited).unwrap_err(),
+            "applauncher-error:invalid-path:file:///Users"
         );
     }
 
