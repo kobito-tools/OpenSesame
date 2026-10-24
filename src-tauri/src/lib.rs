@@ -19,6 +19,7 @@ use model::{
     LauncherConfig, LauncherItem, RuntimeInfo, TargetIcon, TargetPath, TargetType, KEYBOARD_LAYOUTS,
     LANGUAGES,
 };
+use serde::Serialize;
 use std::{
     collections::HashSet,
     fs,
@@ -46,6 +47,16 @@ fn get_config(state: State<'_, AppState>) -> Result<LauncherConfig, String> {
         .config
         .read()
         .map(|config| config.clone())
+        .map_err(|_| "設定のロックを取得できません".to_string())
+}
+
+/// 今の設定のうち、保存時の検査を通らないもの。知らせ欄に出し、キーを押しても動かさない。
+#[tauri::command]
+fn get_config_problems(state: State<'_, AppState>) -> Result<Vec<ConfigProblem>, String> {
+    state
+        .config
+        .read()
+        .map(|config| config_problems(&config))
         .map_err(|_| "設定のロックを取得できません".to_string())
 }
 
@@ -379,67 +390,166 @@ pub(crate) fn error(code: &str, argument: &str) -> String {
 
 /// 対象の存在確認は新規登録やパス変更のときだけ行う。
 /// 登録済みの対象が後から消えても、名前やキーの変更・削除はできるようにするため。
+/// 存在確認より前の検査は、ファイルから読んだときと同じ `config_problems` を使う。
+/// ただし、保存済みの設定に前からあって手を付けていない問題は通す。
+/// 外で書き換えられた項目が何件あっても、1件ずつ消したり直したりして保存できるようにするため。
+/// 通した項目は保存後も `config_problems` に挙がるので、動かさないままになる。
 fn validate_config(config: &LauncherConfig, previous: &LauncherConfig) -> Result<(), String> {
-    let mut keys = HashSet::new();
-    if !LANGUAGES.contains(&config.language.as_str()) {
-        return Err(error("invalid-language", ""));
-    }
-    if !KEYBOARD_LAYOUTS.contains(&config.keyboard_layout.as_str()) {
-        return Err(error("invalid-layout", ""));
-    }
-    validate_activation(&config.activation.macos)?;
-    validate_activation(&config.activation.windows)?;
-    // 表盤面と裏盤面は別々のキーとして扱う。
-    let mut claim = |key: &str, shift: bool| {
-        if keys.insert((shift, key.to_string())) {
-            Ok(())
-        } else if shift {
-            Err(error("duplicate-key", &format!("Shift+{key}")))
-        } else {
-            Err(error("duplicate-key", key))
-        }
-    };
-    for action in &config.window_actions {
-        if let Some(key) = &action.key {
-            validate_key(key)?;
-            claim(key, action.shift)?;
+    let carried = config_problems(previous);
+    for problem in config_problems(config) {
+        let unchanged = match &problem.item_id {
+            Some(id) => same_item(config, previous, id),
+            None => carried.iter().any(|saved| {
+                saved.item_id.is_none() && saved.name == problem.name && saved.error == problem.error
+            }),
+        };
+        if !unchanged {
+            return Err(problem.error);
         }
     }
     for item in &config.items {
-        if item.name.trim().is_empty() {
-            return Err(error("empty-name", ""));
-        }
-        validate_key(&item.key)?;
-        claim(&item.key, item.shift)?;
-        if matches!(item.target_type, TargetType::Website) {
-            // URLは開く側（ブラウザ）に解釈を任せるので、http(s)であることだけ確かめる。
-            if normalize_url(&item.target.value).ok().as_deref() != Some(item.target.value.as_str())
-            {
-                return Err(error("invalid-url", &item.target.value));
+        match item.target_type {
+            TargetType::Website => {}
+            TargetType::Command => validate_working_dir(item, previous)?,
+            TargetType::Application | TargetType::Folder => {
+                let already_registered = previous
+                    .items
+                    .iter()
+                    .any(|saved| saved.id == item.id && saved.target.value == item.target.value);
+                if !already_registered && !Path::new(&item.target.value).exists() {
+                    return Err(error("missing-target", &item.target.value));
+                }
             }
-            continue;
-        }
-        if matches!(item.target_type, TargetType::Command) {
-            validate_command(item, previous)?;
-            continue;
-        }
-        let already_registered = previous
-            .items
-            .iter()
-            .any(|saved| saved.id == item.id && saved.target.value == item.target.value);
-        if !already_registered && !Path::new(&item.target.value).exists() {
-            return Err(error("missing-target", &item.target.value));
         }
     }
     Ok(())
 }
 
-/// コマンドそのものは動かすまで正しいか分からないので、1行であることだけ確かめる。
-/// 作業フォルダはパスと同じく、新しく指定したときだけ存在を確かめる。
-fn validate_command(item: &LauncherItem, previous: &LauncherConfig) -> Result<(), String> {
-    if command::normalize(&item.target.value).ok().as_deref() != Some(item.target.value.as_str()) {
-        return Err(error("invalid-command", ""));
+/// 保存時の検査を通らなかったもの。`item_id` が無いものは項目でなく、
+/// 言語・起動キー・ウィンドウ整形など設定全体にかかわる。
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ConfigProblem {
+    item_id: Option<String>,
+    name: String,
+    error: String,
+}
+
+/// 保存時と同じ検査を、1件目で止めずに全部集める。
+/// ファイルから読んだ設定はアプリの外で書き換えられているかもしれないので、
+/// ここで見つかった項目は動かさず、設定画面の知らせ欄に出す。対象の存在は確かめない。
+pub(crate) fn config_problems(config: &LauncherConfig) -> Vec<ConfigProblem> {
+    let general = [
+        if LANGUAGES.contains(&config.language.as_str()) {
+            Ok(())
+        } else {
+            Err(error("invalid-language", ""))
+        },
+        if KEYBOARD_LAYOUTS.contains(&config.keyboard_layout.as_str()) {
+            Ok(())
+        } else {
+            Err(error("invalid-layout", ""))
+        },
+        validate_activation(&config.activation.macos),
+        validate_activation(&config.activation.windows),
+    ];
+    let mut problems: Vec<ConfigProblem> = general
+        .into_iter()
+        .filter_map(Result::err)
+        .map(|error| ConfigProblem {
+            item_id: None,
+            name: String::new(),
+            error,
+        })
+        .collect();
+    let mut keys = HashSet::new();
+    for action in &config.window_actions {
+        if let Some(key) = &action.key {
+            let checked = validate_key(key).and_then(|_| claim_key(&mut keys, key, action.shift));
+            if let Err(error) = checked {
+                problems.push(ConfigProblem {
+                    item_id: None,
+                    name: action.name.clone(),
+                    error,
+                });
+            }
+        }
     }
+    for item in &config.items {
+        let checked = check_item(item).and_then(|_| claim_key(&mut keys, &item.key, item.shift));
+        if let Err(error) = checked {
+            problems.push(ConfigProblem {
+                item_id: Some(item.id.clone()),
+                name: item.name.clone(),
+                error,
+            });
+        }
+    }
+    problems
+}
+
+/// キーを押したときに、その項目が保存時の検査を通るかどうか。通らなければその理由。
+pub(crate) fn item_problem(config: &LauncherConfig, item_id: &str) -> Option<String> {
+    config_problems(config)
+        .into_iter()
+        .find(|problem| problem.item_id.as_deref() == Some(item_id))
+        .map(|problem| problem.error)
+}
+
+/// 同じIDの項目が、保存済みの設定と中身まで同じかどうか。
+fn same_item(config: &LauncherConfig, previous: &LauncherConfig, id: &str) -> bool {
+    let find = |config: &LauncherConfig| {
+        config
+            .items
+            .iter()
+            .find(|item| item.id == id)
+            .and_then(|item| serde_json::to_value(item).ok())
+    };
+    matches!((find(config), find(previous)), (Some(now), Some(saved)) if now == saved)
+}
+
+/// 表盤面と裏盤面は別々のキーとして扱う。
+fn claim_key(keys: &mut HashSet<(bool, String)>, key: &str, shift: bool) -> Result<(), String> {
+    if keys.insert((shift, key.to_string())) {
+        Ok(())
+    } else if shift {
+        Err(error("duplicate-key", &format!("Shift+{key}")))
+    } else {
+        Err(error("duplicate-key", key))
+    }
+}
+
+/// 項目1件だけで分かる検査。ほかの項目や保存済みの設定には寄らない。
+fn check_item(item: &LauncherItem) -> Result<(), String> {
+    if item.name.trim().is_empty() {
+        return Err(error("empty-name", ""));
+    }
+    validate_key(&item.key)?;
+    let value = item.target.value.as_str();
+    match item.target_type {
+        // URLは開く側（ブラウザ）に解釈を任せるので、http(s)であることだけ確かめる。
+        TargetType::Website => {
+            if normalize_url(value).ok().as_deref() != Some(value) {
+                return Err(error("invalid-url", value));
+            }
+        }
+        // コマンドそのものは動かすまで正しいか分からないので、1行であることだけ確かめる。
+        TargetType::Command => {
+            if command::normalize(value).ok().as_deref() != Some(value) {
+                return Err(error("invalid-command", ""));
+            }
+        }
+        // `open` はURLも開くので、絶対パスに限って `https:`・`file:` などを弾く。
+        TargetType::Application | TargetType::Folder => {
+            if !Path::new(value).is_absolute() {
+                return Err(error("invalid-path", value));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 作業フォルダはパスと同じく、新しく指定したときだけ存在を確かめる。
+fn validate_working_dir(item: &LauncherItem, previous: &LauncherConfig) -> Result<(), String> {
     let Some(dir) = &item.target.working_dir else {
         return Ok(());
     };
@@ -726,6 +836,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_config,
+            get_config_problems,
             save_config,
             select_target,
             create_website,
@@ -956,6 +1067,118 @@ mod tests {
         let mut renamed = saved.clone();
         renamed.items[0].name = "Build".into();
         assert!(validate_config(&renamed, &saved).is_ok());
+    }
+
+    fn website_item(id: &str, key: &str, url: &str) -> LauncherItem {
+        let mut item = item_at(id, key, url);
+        item.target_type = TargetType::Website;
+        item.target.kind = "url".into();
+        item
+    }
+
+    /// 外で書き換えられた設定は、保存済みの項目と同じでも通さない。
+    /// 通らない項目だけを挙げ、ほかの項目は巻き込まない。
+    #[test]
+    fn problems_list_only_the_items_that_fail_the_checks() {
+        let mut config = LauncherConfig::default();
+        config.items.push(item_at("ok", "KeyA", "/Applications/Mail.app"));
+        config.items.push(website_item("js", "KeyS", "javascript:alert(1)"));
+        config.items.push(website_item("file", "KeyD", "file:///etc/passwd"));
+        let mut app = item_at("app-url", "KeyF", "https://example.com/payload");
+        app.target_type = TargetType::Application;
+        config.items.push(app);
+        config.items.push(item_at("folder-url", "KeyG", "file:///Users"));
+        config.items.push(item_at("relative", "KeyH", "Applications/Mail.app"));
+        config.items.push(command_item("two-lines", "echo a\necho b", None));
+        config.items.push(website_item("site", "KeyJ", "https://docs.rs"));
+        config.items.push(command_item("cmd", "make", None));
+        config.items[8].key = "KeyK".into();
+        config.items[6].key = "KeyL".into();
+        let failed: Vec<String> = config_problems(&config)
+            .into_iter()
+            .map(|problem| problem.item_id.unwrap())
+            .collect();
+        assert_eq!(failed, ["js", "file", "app-url", "folder-url", "relative", "two-lines"]);
+        assert_eq!(
+            item_problem(&config, "js").as_deref(),
+            Some("applauncher-error:invalid-url:javascript:alert(1)")
+        );
+        assert_eq!(
+            item_problem(&config, "app-url").as_deref(),
+            Some("applauncher-error:invalid-path:https://example.com/payload")
+        );
+        for id in ["ok", "site", "cmd"] {
+            assert_eq!(item_problem(&config, id), None, "{id} should run");
+        }
+        // 新しく入れるときは、画面から保存しても弾く。
+        assert_eq!(
+            validate_config(&config, &LauncherConfig::default()).unwrap_err(),
+            "applauncher-error:invalid-url:javascript:alert(1)"
+        );
+    }
+
+    /// 外で書き換えられた項目が2件あっても、1件ずつ消したり直したりして保存できる。
+    /// 手を付けていない項目は通すが、動かさないまま知らせに残る。
+    #[test]
+    fn bad_items_can_be_removed_or_fixed_one_at_a_time() {
+        let mut saved = LauncherConfig::default();
+        saved.items.push(website_item("js", "KeyS", "javascript:alert(1)"));
+        saved.items.push(command_item("two-lines", "echo a\necho b", None));
+        saved.items.push(item_at("ok", "KeyA", "/"));
+        // 関係ない項目の名前を変えるだけの保存も通る。
+        let mut renamed = saved.clone();
+        renamed.items[2].name = "Root".into();
+        assert!(validate_config(&renamed, &saved).is_ok());
+        assert!(item_problem(&renamed, "js").is_some());
+        // 1件消す。
+        let mut removed = renamed.clone();
+        removed.items.remove(0);
+        assert!(validate_config(&removed, &renamed).is_ok());
+        assert!(item_problem(&removed, "two-lines").is_some());
+        // 残りを直す。直し方が足りなければ弾く。
+        let mut still_bad = removed.clone();
+        still_bad.items[0].target.value = "echo c\necho d".into();
+        assert_eq!(
+            validate_config(&still_bad, &removed).unwrap_err(),
+            "applauncher-error:invalid-command"
+        );
+        let mut fixed = removed.clone();
+        fixed.items[0].target.value = "echo a".into();
+        assert!(validate_config(&fixed, &removed).is_ok());
+        assert!(config_problems(&fixed).is_empty());
+    }
+
+    #[test]
+    fn a_bad_value_cannot_be_written_into_a_saved_item() {
+        let mut saved = LauncherConfig::default();
+        let mut app = item_at("app", "KeyA", "/");
+        app.target_type = TargetType::Application;
+        saved.items.push(app);
+        let mut edited = saved.clone();
+        edited.items[0].target.value = "https://example.com".into();
+        assert_eq!(
+            validate_config(&edited, &saved).unwrap_err(),
+            "applauncher-error:invalid-path:https://example.com"
+        );
+        // 保存済みの不正な値を、別の不正な値に変えるのも弾く。
+        let mut moved = edited.clone();
+        moved.items[0].target.value = "file:///Users".into();
+        assert_eq!(
+            validate_config(&moved, &edited).unwrap_err(),
+            "applauncher-error:invalid-path:file:///Users"
+        );
+    }
+
+    #[test]
+    fn duplicate_keys_turn_off_only_the_later_item() {
+        let mut config = LauncherConfig::default();
+        config.items.push(item_at("first", "KeyA", "/"));
+        config.items.push(item_at("second", "KeyA", "/"));
+        assert_eq!(item_problem(&config, "first"), None);
+        assert_eq!(
+            item_problem(&config, "second").as_deref(),
+            Some("applauncher-error:duplicate-key:KeyA")
+        );
     }
 
     #[test]

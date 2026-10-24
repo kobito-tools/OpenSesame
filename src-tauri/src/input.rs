@@ -116,10 +116,13 @@ impl Machine {
             return Verdict::Swallow;
         }
 
-        if let Some(item) = find_item(&self.config, key, back) {
+        if let Some((item, problem)) = find_item(&self.config, key, back) {
             self.consumed.insert(key.to_string());
             if first_press {
-                launch(self.app.clone(), item);
+                match problem {
+                    None => launch(self.app.clone(), item),
+                    Some(_) => refuse(self.app.clone(), item),
+                }
             }
             return Verdict::Swallow;
         }
@@ -333,18 +336,29 @@ fn activation_is_down(pressed: &HashSet<String>, activation: &HashSet<String>) -
     !activation.is_empty() && activation.iter().all(|key| pressed.contains(key))
 }
 
+/// 押したキーの項目と、動かす直前に確かめた検査の結果（通らなければその理由）。
 fn find_item(
     config: &Arc<RwLock<LauncherConfig>>,
     pressed_name: &str,
     shift: bool,
-) -> Option<LauncherItem> {
-    config
-        .read()
-        .ok()?
+) -> Option<(LauncherItem, Option<String>)> {
+    let config = config.read().ok()?;
+    let item = config
         .items
         .iter()
         .find(|item| item.shift == shift && key_matches(&item.key, pressed_name))
-        .cloned()
+        .cloned()?;
+    let problem = crate::item_problem(&config, &item.id);
+    Some((item, problem))
+}
+
+/// 設定ファイルがアプリの外で書き換えられ、検査を通らない中身になった項目は動かさない。
+/// 押したことは知らせ欄に出し、直せるよう設定画面を開いて見せる。
+fn refuse(app: AppHandle, item: LauncherItem) {
+    thread::spawn(move || {
+        let _ = app.emit("launch-failed", error("item-blocked", &item.name));
+        show_settings(&app);
+    });
 }
 
 fn find_window_action(

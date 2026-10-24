@@ -155,10 +155,18 @@ pub fn save(path: &Path, config: &LauncherConfig) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(config)
         .map_err(|error| format!("設定を変換できません: {error}"))?;
     let temporary = temporary_path(path);
-    let mut file = OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
+    // 前回の一時ファイルが残っていると、その権限を引き継いでしまう。消してから作り直す。
+    let _ = fs::remove_file(&temporary);
+    let mut options = OpenOptions::new();
+    options.create_new(true).write(true);
+    // 中身はコマンドや作業フォルダなので、本人だけが読み書きできるようにする。
+    // 一時ファイルを置き換える形で確定するので、既にある設定も次の保存で 0600 になる。
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
         .open(&temporary)
         .map_err(|error| format!("一時設定ファイルを作成できません: {error}"))?;
     file.write_all(&bytes)
@@ -397,6 +405,77 @@ mod tests {
         let saved: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         assert_eq!(saved["items"].as_array().unwrap().len(), 2);
         assert!(!fs::read_to_string(&path).unwrap().contains("kobito-action"));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// 外で書き換えられて検査を通らない項目があっても、設定は読めて、何も書き換えない。
+    /// 通らない項目は利用者が画面で直せるよう、消さずに残す。
+    #[test]
+    fn keeps_items_that_fail_the_checks_and_reports_them() {
+        let original = r#"{
+            "version": 4,
+            "language": "ja",
+            "activation": { "macos": ["ControlLeft", "AltLeft"], "windows": ["ControlLeft", "AltLeft"] },
+            "keyboard_layout": "keyboard-jis",
+            "popup": { "position": "cursor-monitor-center" },
+            "window_actions": [],
+            "items": [
+                { "id": "a", "type": "application", "name": "Mail", "key": "KeyM",
+                  "target": { "kind": "path", "value": "/System/Applications/Mail.app" },
+                  "icon": { "kind": "system" } },
+                { "id": "js", "type": "website", "name": "Docs", "key": "KeyD",
+                  "target": { "kind": "url", "value": "javascript:alert(1)" },
+                  "icon": { "kind": "system" } },
+                { "id": "file", "type": "website", "name": "Passwd", "key": "KeyP",
+                  "target": { "kind": "url", "value": "file:///etc/passwd" },
+                  "icon": { "kind": "system" } },
+                { "id": "url-app", "type": "application", "name": "Notes", "key": "KeyN",
+                  "target": { "kind": "path", "value": "https://example.com/payload" },
+                  "icon": { "kind": "system" } }
+            ]
+        }"#;
+        let (dir, path) = temp_config(original);
+        let config = load_or_create(&path).unwrap();
+        assert_eq!(config.items.len(), 4);
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+        let failed: Vec<Option<String>> = crate::config_problems(&config)
+            .into_iter()
+            .map(|problem| problem.item_id)
+            .collect();
+        assert_eq!(
+            failed,
+            [Some("js".into()), Some("file".into()), Some("url-app".into())]
+        );
+        assert_eq!(crate::item_problem(&config, "a"), None);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn mode_of(path: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    /// 新しく作る設定も、既にある設定を保存し直したときも、本人だけが読み書きできる。
+    #[cfg(unix)]
+    #[test]
+    fn saved_config_is_readable_only_by_the_owner() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("opensesame-test-{}", uuid::Uuid::new_v4()));
+        let path = dir.join("config.json");
+        let config = load_or_create(&path).unwrap();
+        assert_eq!(mode_of(&path), 0o600);
+
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        // 前回の一時ファイルが緩い権限のまま残っていても、引き継がない。
+        let leftover = temporary_path(&path);
+        fs::write(&leftover, b"stale").unwrap();
+        fs::set_permissions(&leftover, fs::Permissions::from_mode(0o666)).unwrap();
+        save(&path, &config).unwrap();
+        assert_eq!(mode_of(&path), 0o600);
+        assert!(!leftover.exists());
+        assert_eq!(load_or_create(&path).unwrap().version, CONFIG_VERSION);
         fs::remove_dir_all(&dir).unwrap();
     }
 
