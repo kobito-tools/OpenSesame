@@ -51,8 +51,9 @@ xattr -dr com.apple.quarantine "/Applications/OpenSesame!.app"
 - 必要なもの：Xcode Command Line Tools・Node.js 20 以降・Rust
   - Rust が無いときは、公式の手順（rustup）で入れるかを尋ねます。
   - Xcode Command Line Tools と Node.js が無いときは、入れ方を表示して止まります。
-- ビルドが終わると、`OpenSesame!.app` をアプリケーションフォルダへ移すかを尋ねます。すでにある場合は、置き換えてよいかを尋ねます。移さなかったときは、このフォルダにできた `OpenSesame!.app` を自分で移して起動します。
-- 最後に、置いた場所の `OpenSesame!.app` で起動情報を書き出します（下の「kobito シリーズとのつながり」）。画面は開かず、動いている OpenSesame! も止めません。
+- ビルドが終わると、`OpenSesame!.app` をアプリケーションフォルダの `kobito-tools` フォルダ（`/Applications/kobito-tools/`）へ移すかを尋ねます。フォルダが無ければ作り、シリーズのアイコンを付けます。すでに `OpenSesame!.app` がある場合は、置き換えてよいかを尋ねます。移さなかったときは、このフォルダにできた `OpenSesame!.app` を自分で移して起動します。
+- `/Applications` の直下に以前の `OpenSesame!.app` が残っていても、消しません。使わなければ、自分でゴミ箱へ移してください。
+- 最後に、置いた場所の `OpenSesame!.app` で起動情報を書き出します（下の「kobito シリーズとのつながり」）。画面は開かず、動いている OpenSesame! も止めません。あわせて、このリポジトリの場所を PC 固有領域の `kobito-tools/repos/opensesame` にシンボリックリンクで記します。
 - `./setup.sh --help` で使い方を、`./setup.sh --dry-run` で何をするかを（何も変えずに）確かめられます。何度実行しても大丈夫です。
 - 作り直した場合は、アクセシビリティの一覧から OpenSesame! を「－」で消して、追加し直してください（作るたびに署名が変わるため、以前の許可が効かなくなります）。
 
@@ -181,7 +182,7 @@ Control、Option（Alt）、Command（Windows キー）、Shift のうち最大 
 ### macOS
 
 1. OpenSesame! を終了します。
-2. アプリケーションフォルダの OpenSesame! をゴミ箱に移動します。
+2. アプリケーションフォルダの OpenSesame! をゴミ箱に移動します（`setup.sh` で入れた場合は `kobito-tools` フォルダの中にあります）。
 3. 「システム設定」→「プライバシーとセキュリティ」→「アクセシビリティ」の一覧から OpenSesame! を選択し、「－」で削除します。
 
 ### Windows
