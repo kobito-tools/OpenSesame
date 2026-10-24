@@ -10,14 +10,14 @@ EXEC_NAME="OpenSesame"
 RUSTUP_URL="https://sh.rustup.rs"
 
 kobito_steps=(
-  "同じアプリIDのリポジトリが、別の場所に記されていないかを確かめる（かぶっていれば何も変えずに止まる）"
-  "Xcode Command Line Tools・Node.js 20 以降があるかを確かめる（無ければ入れ方を表示して止まる）"
-  "Rust があるかを確かめる（無ければ、公式の手順 rustup で入れるかを尋ねる）"
-  "$APP_NAME.app をビルドする（数分かかる）"
-  "アプリケーションフォルダの kobito-tools フォルダへ移すかを尋ねる（--yes では移さない）"
-  "起動情報を、置いた場所の .app で書き出す"
-  "このリポジトリの場所を PC 固有領域の repos/ に記す（シンボリックリンク）"
-  "許可（アクセシビリティ）の案内を表示する"
+  "Check that no repository with the same app ID is recorded in another location (if one is, stop without changing anything)"
+  "Check that the Xcode Command Line Tools and Node.js 20 or later are installed (if not, show how to install them and stop)"
+  "Check that Rust is installed (if not, ask whether to install it with the official rustup method)"
+  "Build $APP_NAME.app (takes a few minutes)"
+  "Ask whether to move it to the kobito-tools folder in the Applications folder (--yes does not move it)"
+  "Write the launch info using the .app where it was placed"
+  "Record this repository's location in repos/ in the per-Mac folder (a symbolic link)"
+  "Show how to grant the Accessibility permission"
 )
 kobito_setup "$APP_NAME" "$@"
 # ビルド・起動情報より前に確かめる（あとで止まると、起動情報だけがこのリポジトリに変わって repos/ と食い違う）。
@@ -27,85 +27,85 @@ path=($path /opt/homebrew/bin /usr/local/bin)
 
 # 足りない道具は、--dry-run なら知らせて続ける（何をするかを最後まで見せるため）。
 missing() {
-  (( kobito_dry_run )) && { kobito_info "（--dry-run）$1。実際に動かすとここで止まります。"; return 0; }
+  (( kobito_dry_run )) && { kobito_info "(--dry-run) $1. A real run would stop here."; return 0; }
   kobito_fail "$1"
 }
 
-kobito_step "必要な道具を確かめます"
+kobito_step "Checking the required tools"
 if xcode-select -p >/dev/null 2>&1; then
-  kobito_info "Xcode Command Line Tools: あります"
+  kobito_info "Xcode Command Line Tools: found"
 else
-  missing "Xcode Command Line Tools が見つかりません。ターミナルで xcode-select --install を実行して入れてから、もう一度動かしてください"
+  missing "The Xcode Command Line Tools were not found. Run xcode-select --install in Terminal to install them, then run this again"
 fi
 if (( $+commands[node] && $+commands[npm] )) && (( $(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || print 0) >= 20 )); then
-  kobito_info "Node.js: あります（$(node -v)）"
+  kobito_info "Node.js: found ($(node -v))"
 else
-  missing "Node.js 20 以降が見つかりません。https://nodejs.org/ から入れるか、brew install node（古いときは brew upgrade node）で入れてから、もう一度動かしてください"
+  missing "Node.js 20 or later was not found. Install it from https://nodejs.org/ or with brew install node (brew upgrade node if it is too old), then run this again"
 fi
 
-kobito_step "Rust を確かめます"
+kobito_step "Checking Rust"
 if (( $+commands[cargo] )); then
-  kobito_info "Rust: あります（$(cargo --version)）"
+  kobito_info "Rust: found ($(cargo --version))"
 elif (( kobito_dry_run )); then
-  kobito_info "Rust: ありません。実際に動かすと、公式の手順（curl --proto '=https' --tlsv1.2 -sSf $RUSTUP_URL | sh -s -- -y）で入れるかを尋ねます。"
-elif kobito_ask "Rust がありません。公式の手順（rustup）で入れますか？" y; then
-  curl --proto '=https' --tlsv1.2 -sSf "$RUSTUP_URL" | sh -s -- -y || kobito_fail "Rust を入れられませんでした。https://rustup.rs/ の手順で入れてから、もう一度動かしてください。"
+  kobito_info "Rust: not found. A real run would ask whether to install it with the official method (curl --proto '=https' --tlsv1.2 -sSf $RUSTUP_URL | sh -s -- -y)."
+elif kobito_ask "Rust is not installed. Install it with the official method (rustup)?" y; then
+  curl --proto '=https' --tlsv1.2 -sSf "$RUSTUP_URL" | sh -s -- -y || kobito_fail "Could not install Rust. Install it by following https://rustup.rs/, then run this again."
   rehash
-  (( $+commands[cargo] )) || kobito_fail "Rust を入れましたが、cargo が見つかりません。ターミナルを開き直してから、もう一度動かしてください。"
-  kobito_info "Rust を入れました（$(cargo --version)）"
+  (( $+commands[cargo] )) || kobito_fail "Rust was installed but cargo cannot be found. Open a new terminal window and run this again."
+  kobito_info "Installed Rust ($(cargo --version))"
 else
-  kobito_fail "ビルドには Rust が要ります。https://rustup.rs/ の手順で入れてから、もう一度動かしてください。"
+  kobito_fail "Rust is needed to build the app. Install it by following https://rustup.rs/, then run this again."
 fi
 
 # ソースが新しくなっていることがあるので、毎回作り直す。
-kobito_step "$APP_NAME.app をビルドします（数分かかります）"
+kobito_step "Building $APP_NAME.app (takes a few minutes)"
 built="$kobito_here/$APP_NAME.app"
-kobito_run zsh ./build.sh || kobito_fail "ビルドできませんでした。上の表示を確かめてください。"
+kobito_run zsh ./build.sh || kobito_fail "Could not build the app. Check the output above."
 
 # 起動情報は .app の場所を含むので、移すかどうかを決めてから書き出す。
 # 置き先はアプリケーションフォルダの kobito-tools フォルダ。直下に残っている古い .app には触らない。
 # 試すときは KOBITO_APPLICATIONS_DIR で別のフォルダを指せる（実際のアプリケーションフォルダに触れないため）。
-kobito_step "$APP_NAME.app をアプリケーションフォルダへ移すかを決めます"
+kobito_step "Deciding whether to move $APP_NAME.app to the Applications folder"
 placed="$built"
-if kobito_ask "$APP_NAME.app をアプリケーションフォルダの kobito-tools フォルダへ移しますか？" n; then
+if kobito_ask "Move $APP_NAME.app to the kobito-tools folder in the Applications folder?" n; then
   kobito_applications_folder
   target="$kobito_applications/$APP_NAME.app"
   move=1
   if [[ -e $target ]]; then
-    kobito_info "$target がすでにあります。"
+    kobito_info "$target already exists."
     if pgrep -f "^$target/Contents/MacOS/" >/dev/null 2>&1; then
-      kobito_info "$target が動いているので、置き換えません。終了してから、もう一度 ./setup.sh を動かしてください。"
+      kobito_info "$target is running, so it is not replaced. Quit it, then run ./setup.sh again."
       move=0
-    elif ! kobito_ask "置き換えますか？（今あるものは消えます。登録した項目と設定は消えません）" n; then
-      kobito_info "置き換えません。今あるものはそのままにします。"
+    elif ! kobito_ask "Replace it? (The existing app is deleted. Your registered items and settings are kept.)" n; then
+      kobito_info "Not replacing it. The existing app is left as it is."
       move=0
     fi
   fi
   if (( move )); then
     if { [[ ! -e $target ]] || kobito_run rm -rf "$target"; } && kobito_run mv "$built" "$target"; then
       placed="$target"
-      (( kobito_dry_run )) || kobito_info "移しました: $placed"
+      (( kobito_dry_run )) || kobito_info "Moved: $placed"
       old="${KOBITO_APPLICATIONS_DIR:-/Applications}/$APP_NAME.app"
-      [[ -e $old ]] && kobito_info "以前の置き場所の $old は、そのままにしています。使わなければ、ゴミ箱へ移してください（アクセシビリティの一覧からも「－」で消せます）。"
+      [[ -e $old ]] && kobito_info "The copy in the old location, $old, is left as it is. If you no longer use it, move it to the Trash (you can also remove it from the Accessibility list with \"-\")."
     else
-      kobito_info "移せませんでした。$built はこのフォルダに残しています。"
+      kobito_info "Could not move it. $built is left in this folder."
     fi
   fi
 else
-  kobito_info "移しません。$built を使います。"
+  kobito_info "Not moving it. Using $built."
 fi
 
 # --write-launch-info は、書いてすぐ終わる（画面もキーの監視も始めず、動いている方も終わらせない）。
-kobito_step "起動情報を書き出します"
-kobito_run "$placed/Contents/MacOS/$EXEC_NAME" --write-launch-info || kobito_fail "起動情報を書き出せませんでした。アプリを一度起動すると、書き出されます。"
+kobito_step "Writing the launch info"
+kobito_run "$placed/Contents/MacOS/$EXEC_NAME" --write-launch-info || kobito_fail "Could not write the launch info. It is written when you start the app once."
 
 kobito_link_repository
 
-kobito_step "許可について"
-kobito_info "キー入力を検知するため、「アクセシビリティ」の許可が要ります（初めて起動すると案内が出ます）。"
-kobito_info "  1. 案内の「アクセシビリティ設定を開く」をクリックします"
-kobito_info "  2. 一覧の下の「＋」から $APP_NAME を追加し、スイッチをオンにします"
-kobito_info "作り直したときは、作るたびに署名が変わるため、一覧から $APP_NAME を「－」で消して、追加し直してください。"
-[[ $placed == $built ]] && kobito_info "アプリケーションフォルダへ移してから起動すると、許可が保たれやすくなります。"
+kobito_step "About permissions"
+kobito_info "$APP_NAME needs the Accessibility permission to detect key presses (it shows a guide the first time you start it)."
+kobito_info "  1. Click \"Open Accessibility settings\" in the guide"
+kobito_info "  2. Add $APP_NAME with \"+\" below the list and turn its switch on"
+kobito_info "Each build changes the signature, so after rebuilding, remove $APP_NAME from the list with \"-\" and add it again."
+[[ $placed == $built ]] && kobito_info "Moving the app to the Applications folder before starting it makes the permission more likely to stick."
 
 kobito_finish "open \"$placed\""
