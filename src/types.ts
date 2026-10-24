@@ -56,6 +56,13 @@ export interface LauncherConfig {
   items: LauncherItem[];
 }
 
+/** 保存時の検査を通らない設定。`item_id` が無いものは設定全体にかかわる。 */
+export interface ConfigProblem {
+  item_id?: string | null;
+  name: string;
+  error: string;
+}
+
 export interface RuntimeInfo {
   platform: Platform;
   config_path: string;
