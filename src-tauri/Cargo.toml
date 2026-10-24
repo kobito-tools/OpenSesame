@@ -26,8 +26,6 @@ file_icon_provider = "1.0.2"
 # Webサイトを登録したとき、そのサイトのアイコンを取りに行く。
 ureq = "2"
 url = "2"
-# シリーズの操作の URL の {today} を、この PC の今日の日付にする。
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # ポップアップを透過ウィンドウのままにすると、backdrop-filterはデスクトップを

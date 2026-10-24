@@ -41,11 +41,14 @@ fn load(path: &Path) -> Result<LauncherConfig, String> {
     if migrated {
         migrate(&mut raw);
     }
+    let dropped = drop_removed_items(&mut raw);
     let mut config: LauncherConfig = serde_json::from_value(raw)
         .map_err(|error| format!("設定ファイルが不正です: {error}"))?;
     fill_window_actions(&mut config);
     if migrated {
         config.version = CONFIG_VERSION;
+    }
+    if migrated || dropped {
         save(path, &config)?;
     }
     Ok(config)
@@ -115,6 +118,17 @@ fn migrate_keyboard_layout(object: &mut Map<String, Value>) {
         popup.remove("layout");
         popup.remove("show_labels");
     }
+}
+
+/// 種類から外した「シリーズの操作」（`kobito-action`）の項目を捨てる。
+/// 1件のために設定全体を壊れた扱いにせず、ほかの項目はそのまま読む。捨てたら `true`。
+fn drop_removed_items(raw: &mut Value) -> bool {
+    let Some(items) = raw.get_mut("items").and_then(Value::as_array_mut) else {
+        return false;
+    };
+    let before = items.len();
+    items.retain(|item| item.get("type").and_then(Value::as_str) != Some("kobito-action"));
+    items.len() != before
 }
 
 /// 新しい版で増えたウィンドウ整形を、既存の割り当てを保ったまま組み込みの順に並べ直す。
@@ -306,10 +320,10 @@ mod tests {
         fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// シリーズの操作を足す前（キーにコマンドを割り当てられるようになった版）の設定ファイルが、
+    /// コマンドを割り当てられるようになった版の設定ファイルが、
     /// そのまま読めて、書き戻しても項目の形が変わらないこと。
     #[test]
-    fn reads_a_config_saved_before_series_actions_existed() {
+    fn reads_a_config_with_commands_unchanged() {
         let original = r#"{
             "version": 4,
             "language": "ja",
@@ -332,7 +346,6 @@ mod tests {
         let (dir, path) = temp_config(original);
         let config = load_or_create(&path).unwrap();
         assert_eq!(config.items.len(), 3);
-        assert!(config.items.iter().all(|item| item.target.app.is_none() && item.target.action.is_none()));
         // 読むだけでは書き換えも退避もしない。
         assert_eq!(fs::read_to_string(&path).unwrap(), original);
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
@@ -343,41 +356,47 @@ mod tests {
         fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// シリーズの操作は、アプリIDと操作の `id` だけを覚える（URL や起動コマンドは書かない）。
+    /// 種類から外した「シリーズの操作」（`kobito-action`）の項目は、読み込むときに捨てる。
+    /// ほかの項目はそのまま残り、捨てたあとの形で書き戻す。
     #[test]
-    fn series_actions_keep_only_the_app_and_action_ids() {
-        use crate::model::{LauncherItem, TargetIcon, TargetPath, TargetType};
-        let (dir, path) = temp_config("{}");
-        let mut config = LauncherConfig::default();
-        config.items.push(LauncherItem {
-            id: "s".into(),
-            target_type: TargetType::KobitoAction,
-            name: "Memo › 新しいメモ".into(),
-            key: "KeyM".into(),
-            shift: false,
-            target: TargetPath {
-                kind: "kobito-action".into(),
-                app: Some("memo".into()),
-                action: Some("new".into()),
-                ..Default::default()
-            },
-            icon: TargetIcon {
-                kind: "system".into(),
-                value: None,
-            },
-            hide_when_frontmost: false,
-        });
-        save(&path, &config).unwrap();
-        let raw: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        assert_eq!(raw["items"][0]["type"], "kobito-action");
-        assert_eq!(
-            raw["items"][0]["target"],
-            serde_json::json!({ "kind": "kobito-action", "app": "memo", "action": "new" })
+    fn drops_items_of_the_removed_kobito_action_type() {
+        let (dir, path) = temp_config(
+            r#"{
+                "version": 4,
+                "language": "ja",
+                "activation": { "macos": ["ControlLeft", "AltLeft"], "windows": ["ControlLeft", "AltLeft"] },
+                "keyboard_layout": "keyboard-jis",
+                "popup": { "position": "cursor-monitor-center" },
+                "window_actions": [],
+                "items": [
+                    { "id": "a", "type": "application", "name": "Mail", "key": "KeyM", "shift": false,
+                      "target": { "kind": "path", "value": "/System/Applications/Mail.app" },
+                      "icon": { "kind": "system" }, "hide_when_frontmost": true },
+                    { "id": "s", "type": "kobito-action", "name": "Memo › 新しいメモ", "key": "KeyN", "shift": false,
+                      "target": { "kind": "kobito-action", "app": "memo", "action": "new" },
+                      "icon": { "kind": "system" }, "hide_when_frontmost": false },
+                    { "id": "c", "type": "command", "name": "Notes", "key": "KeyC", "shift": true,
+                      "target": { "kind": "command", "value": "uv run notes.py", "working_dir": "/tmp" },
+                      "icon": { "kind": "system" }, "hide_when_frontmost": false }
+                ]
+            }"#,
         );
-        let loaded = load_or_create(&path).unwrap();
-        assert!(matches!(loaded.items[0].target_type, TargetType::KobitoAction));
-        assert_eq!(loaded.items[0].target.app.as_deref(), Some("memo"));
-        assert_eq!(loaded.items[0].target.action.as_deref(), Some("new"));
+        let config = load_or_create(&path).unwrap();
+        let ids: Vec<&str> = config.items.iter().map(|item| item.id.as_str()).collect();
+        assert_eq!(ids, ["a", "c"]);
+        assert_eq!(config.language, "ja");
+        assert!(config.items[0].hide_when_frontmost);
+        assert_eq!(config.items[1].target.working_dir.as_deref(), Some("/tmp"));
+        // 退避はせず、捨てたあとの形で書き戻す。
+        let names: Vec<String> = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["config.json"]);
+        let saved: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["items"].as_array().unwrap().len(), 2);
+        assert!(!fs::read_to_string(&path).unwrap().contains("kobito-action"));
         fs::remove_dir_all(&dir).unwrap();
     }
 
