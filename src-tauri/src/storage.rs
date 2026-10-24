@@ -155,10 +155,18 @@ pub fn save(path: &Path, config: &LauncherConfig) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(config)
         .map_err(|error| format!("設定を変換できません: {error}"))?;
     let temporary = temporary_path(path);
-    let mut file = OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
+    // 前回の一時ファイルが残っていると、その権限を引き継いでしまう。消してから作り直す。
+    let _ = fs::remove_file(&temporary);
+    let mut options = OpenOptions::new();
+    options.create_new(true).write(true);
+    // 中身はコマンドや作業フォルダなので、本人だけが読み書きできるようにする。
+    // 一時ファイルを置き換える形で確定するので、既にある設定も次の保存で 0600 になる。
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
         .open(&temporary)
         .map_err(|error| format!("一時設定ファイルを作成できません: {error}"))?;
     file.write_all(&bytes)
@@ -440,6 +448,34 @@ mod tests {
             [Some("js".into()), Some("file".into()), Some("url-app".into())]
         );
         assert_eq!(crate::item_problem(&config, "a"), None);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn mode_of(path: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    /// 新しく作る設定も、既にある設定を保存し直したときも、本人だけが読み書きできる。
+    #[cfg(unix)]
+    #[test]
+    fn saved_config_is_readable_only_by_the_owner() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("opensesame-test-{}", uuid::Uuid::new_v4()));
+        let path = dir.join("config.json");
+        let config = load_or_create(&path).unwrap();
+        assert_eq!(mode_of(&path), 0o600);
+
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        // 前回の一時ファイルが緩い権限のまま残っていても、引き継がない。
+        let leftover = temporary_path(&path);
+        fs::write(&leftover, b"stale").unwrap();
+        fs::set_permissions(&leftover, fs::Permissions::from_mode(0o666)).unwrap();
+        save(&path, &config).unwrap();
+        assert_eq!(mode_of(&path), 0o600);
+        assert!(!leftover.exists());
+        assert_eq!(load_or_create(&path).unwrap().version, CONFIG_VERSION);
         fs::remove_dir_all(&dir).unwrap();
     }
 
