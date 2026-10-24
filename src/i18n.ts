@@ -28,6 +28,8 @@ const ja = {
   "notice.accessibility": "システム設定 → プライバシーとセキュリティ → アクセシビリティで{app}を許可してください。",
   "notice.voiceover": "左Control + 左OptionはVoiceOverの操作キーと重なります。",
   "notice.inputError": "キーボード監視を開始できません",
+  "notice.config.title": "動かさない項目があります",
+  "notice.config.lead": "設定ファイルに、画面からは保存できない中身があります。直すか消すまで、キーを押しても動かしません。",
 
   "permission.title": "アクセシビリティの許可が必要です",
   "permission.lead": "{app}がキー入力を受け取るには、macOSのアクセシビリティ許可が必要です。下のボタンで設定画面を開き、次の手順で許可してください。",
@@ -164,6 +166,8 @@ const ja = {
   "error.missing-working-dir": "作業フォルダが見つかりません: {0}",
   "error.command-spawn-failed": "コマンドを起動できませんでした: {0}",
   "error.command-failed": "コマンドがすぐに終わりました（終了コード {0}）",
+  "error.invalid-path": "アプリとフォルダは絶対パスで指定してください: {0}",
+  "error.item-blocked": "「{0}」は設定ファイルの中身が検査を通らないので、動かしませんでした",
 } as const;
 
 export type MessageKey = keyof typeof ja;
@@ -188,6 +192,8 @@ const en: Record<MessageKey, string> = {
   "notice.accessibility": "Allow {app} in System Settings → Privacy & Security → Accessibility.",
   "notice.voiceover": "Left Control + Left Option collides with the VoiceOver modifier.",
   "notice.inputError": "Cannot start keyboard monitoring",
+  "notice.config.title": "Some items are turned off",
+  "notice.config.lead": "The config file holds entries the settings window would not save. They do nothing when pressed until you fix or remove them.",
 
   "permission.title": "Accessibility permission required",
   "permission.lead": "{app} needs macOS Accessibility permission to receive key presses. Open the settings with the button below and follow these steps.",
@@ -324,6 +330,8 @@ const en: Record<MessageKey, string> = {
   "error.missing-working-dir": "Working folder not found: {0}",
   "error.command-spawn-failed": "Could not start the command: {0}",
   "error.command-failed": "The command stopped right away (exit code {0})",
+  "error.invalid-path": "Apps and folders need an absolute path: {0}",
+  "error.item-blocked": "\"{0}\" did not run because its entry in the config file did not pass the checks",
 };
 
 const DICTIONARIES: Record<Language, Record<MessageKey, string>> = { ja, en };

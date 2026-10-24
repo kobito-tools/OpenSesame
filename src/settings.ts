@@ -14,6 +14,7 @@ import {
   type KeyboardSlot,
 } from "./keys";
 import type {
+  ConfigProblem,
   KeyboardLayout,
   LauncherConfig,
   LauncherItem,
@@ -105,6 +106,8 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
   let statusTimer: number | undefined;
   /** キーボード監視の状態。Rust側から随時更新される。 */
   let inputError: string | null = runtime.input_error ?? null;
+  /** 設定ファイルにある、保存時の検査を通らない中身。Rust側はこれらを動かさない。 */
+  let problems = await invoke<ConfigProblem[]>("get_config_problems");
   setLanguage(config.language);
 
   /** 表示中の盤面。真なら裏盤面（Shift）で、キーボード図も一覧もこちらに揃える。 */
@@ -131,12 +134,14 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
   const save = async (): Promise<boolean> => {
     try {
       config = await invoke<LauncherConfig>("save_config", { config });
+      problems = await invoke<ConfigProblem[]>("get_config_problems");
       setLanguage(config.language);
       paint();
       showStatus(t("status.saved"));
       return true;
     } catch (error) {
       config = await invoke<LauncherConfig>("get_config");
+      problems = await invoke<ConfigProblem[]>("get_config_problems");
       setLanguage(config.language);
       paint();
       showStatus(translateError(error), "error");
@@ -855,6 +860,22 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     return messages;
   };
 
+  /** 動かさない項目の知らせ。名前は設定ファイルのままなので、HTMLとして解釈させない。 */
+  const problemNotice = (): HTMLElement | null => {
+    if (problems.length === 0) return null;
+    const aside = document.createElement("aside");
+    aside.className = "permission-note error";
+    const title = document.createElement("strong");
+    title.textContent = t("notice.config.title");
+    const body = document.createElement("span");
+    const lines = problems.map((problem) =>
+      problem.name ? `${problem.name}: ${translateError(problem.error)}` : translateError(problem.error),
+    );
+    body.textContent = [t("notice.config.lead"), ...lines].join(" / ");
+    aside.append(title, body);
+    return aside;
+  };
+
   const paint = () => {
     const keyboardScroll = root.querySelector<HTMLElement>("[data-keyboard]")?.scrollLeft ?? 0;
     // 設定画面はページ全体が縦に動くので、描き直しの前後で位置を保つ。
@@ -886,6 +907,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         <div data-activation-slot></div>
       </section>
       <div data-permission></div>
+      <div data-config-problems></div>
       ${noticeMessages.length > 0 ? `<aside class="permission-note"><strong>${t("notice.title")}</strong><span>${noticeMessages.join(" ")}</span></aside>` : ""}
       <section class="settings-split">
         <div class="split-pane keyboard-pane">
@@ -910,6 +932,10 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     const configPath = shell.querySelector<HTMLElement>("[data-config-path]");
     if (configPath) configPath.title = runtime.config_path;
     if (inputError) shell.querySelector("[data-permission]")?.append(permissionCard());
+    const notice = problemNotice();
+    const noticeSlot = shell.querySelector("[data-config-problems]");
+    if (notice) noticeSlot?.replaceWith(notice);
+    else noticeSlot?.remove();
     shell.querySelector(".settings-header")?.prepend(kobito("kobito-settings"));
     shell.querySelector("[data-activation-slot]")?.append(activationRecorder());
     const note = layerNote();
