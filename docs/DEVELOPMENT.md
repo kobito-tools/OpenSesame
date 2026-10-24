@@ -68,7 +68,7 @@ npm run tauri dev
 npm run tauri build
 ```
 
-手元で使う `.app` だけを作る場合（macOS）は、`./build.sh` を実行します。`npm ci` と `tauri build --bundles app` を行い、このフォルダ直下に `OpenSesame!.app` を置きます。ソースから使う人向けの入口は `setup.sh` です（道具の確かめ・ビルド・アプリケーションフォルダへ移すかの確認・起動情報の書き出し・許可と起動の案内。`--yes`・`--dry-run`・`--help` を受け付けます）。引数の読み方・表示・尋ね方は、シリーズ共通の `docs/kobito-spec/setup.zsh` を読み込んで使います。`Setup.command` は `setup.sh` を Finder からダブルクリックで動かすための入口です。試すときは `KOBITO_APPLICATIONS_DIR` に一時フォルダを指すと、実際のアプリケーションフォルダに触れません。
+手元で使う `.app` だけを作る場合（macOS）は、`./build.sh` を実行します。`npm ci` と `tauri build --bundles app` を行い、このフォルダ直下に `OpenSesame!.app` を置きます。ソースから使う人向けの入口は `setup.sh` です（道具の確かめ・ビルド・アプリケーションフォルダの `kobito-tools` フォルダへ移すかの確認・起動情報の書き出し・PC 固有領域の `repos/` へのリンク・許可と起動の案内。`--yes`・`--dry-run`・`--help` を受け付けます）。引数の読み方・表示・尋ね方は、シリーズ共通の `docs/kobito-spec/setup.zsh` を読み込んで使います。`Setup.command` は `setup.sh` を Finder からダブルクリックで動かすための入口です。置き先のフォルダの用意（無ければ作ってアイコンを付ける・アイコンの無いフォルダなら止まる）と `repos/` へのリンクは、共通の部品（`kobito_applications_folder`・`kobito_link_repository`）が行います。`/Applications` の直下に残っている古い `.app` には触りません。試すときは `KOBITO_APPLICATIONS_DIR`・`KOBITO_CONFIG_DIR` に一時フォルダを指すと、実際のアプリケーションフォルダと PC 固有領域に触れません。
 
 テスト:
 
@@ -175,10 +175,10 @@ macOS版は `bundle.macOS.signingIdentity` に `-` を指定し、ad-hoc 署名�
 {
   "app": "opensesame",
   "name": "OpenSesame!",
-  "command": ["/Applications/OpenSesame!.app/Contents/MacOS/OpenSesame"],
+  "command": ["/Applications/kobito-tools/OpenSesame!.app/Contents/MacOS/OpenSesame"],
   "name_en": "OpenSesame!",
   "color": "gray",
-  "icon": { "file": "/Applications/OpenSesame!.app/Contents/Resources/kobito/icon.svg", "glyph": "🔑" }
+  "icon": { "file": "/Applications/kobito-tools/OpenSesame!.app/Contents/Resources/kobito/icon.svg", "glyph": "🔑" }
 }
 ```
 
@@ -186,7 +186,7 @@ macOS版は `bundle.macOS.signingIdentity` に `-` を指定し、ad-hoc 署名�
 - `command` は今動いている実行ファイル（`std::env::current_exe()`）です。`embed` は書きません（ユーティリティアプリはほかのアプリの中に表示しない）。`actions` も持ちません。
 - アイコンは、シリーズの決まりどおり `kobito/icon.svg` を指します。`tauri.conf.json` の `bundle.resources` でリポジトリの `kobito/icon.svg` を `.app` の中に同じ `kobito/icon.svg` として入れ、実行ファイルの場所から求めます（macOS は `Contents/Resources/`、Windows は実行ファイルの隣）。リポジトリの画像を指さないのは、`.app` をアプリケーションフォルダへ移したあと、アプリがリポジトリの場所を知る手段が無いためです。画像が無い・256 KB を超えるときは `file` を書かず、`glyph` だけを名乗ります。
 - 書くときは同じフォルダの一時ファイルに書いてから置き換えます。
-- `--write-launch-info` を付けて起動すると、書いてすぐ終わります（書いたパスを標準出力に出す。失敗したら終了コード 1）。`run()` の最初、二重起動の処理（`instance::take_over_or_exit`）より前で調べるので、動いている OpenSesame! を終わらせず、画面もキーの監視も始めません。`setup.sh` は、`.app` をアプリケーションフォルダへ移すかを決めたあとに、置いた場所の `.app` でこれを動かします。
+- `--write-launch-info` を付けて起動すると、書いてすぐ終わります（書いたパスを標準出力に出す。失敗したら終了コード 1）。`run()` の最初、二重起動の処理（`instance::take_over_or_exit`）より前で調べるので、動いている OpenSesame! を終わらせず、画面もキーの監視も始めません。`setup.sh` は、`.app` をアプリケーションフォルダの `kobito-tools` フォルダへ移すかを決めたあとに、置いた場所の `.app` でこれを動かします。
 - `--metadata` を付けて起動すると、起動情報と同じ JSON を標準出力に出してすぐ終わります（何も書きません）。`--write-launch-info` と同じく、二重起動の処理より前で調べます（`series::exit_if_only_printing_metadata`）。
 - リポジトリの直下の `kobito-app.json` は、シリーズの決まり（`docs/kobito-spec/APP_PACKAGE.md`）の目印です。アプリの形で配るので `"kind": "native"` と書き、`launch.py` は持ちません（登録は `setup.sh` と `--write-launch-info`）。アプリID・表示名は `series.rs`、`bundle_id` は `tauri.conf.json` の `identifier`、`version` は `tauri.conf.json`・`Cargo.toml`・`package.json` とそろえます（`series::tests::the_marker_names_this_app_as_a_native_series_app` が、`package`・`tagline` と `kobito/` のアイコンも含めて確かめます）。リポジトリの形が決まりどおりかは、kobito シリーズの確かめの道具（`docs/kobito-spec/APP_PACKAGE.md` §12）で調べられます。
 
