@@ -108,6 +108,8 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
   let inputError: string | null = runtime.input_error ?? null;
   /** 設定ファイルにある、保存時の検査を通らない中身。Rust側はこれらを動かさない。 */
   let problems = await invoke<ConfigProblem[]>("get_config_problems");
+  // 読めないときはオフと表示する（切り替えれば実際の状態を読み直す）。
+  let launchAtLogin = await invoke<boolean>("get_launch_at_login").catch(() => false);
   setLanguage(config.language);
 
   /** 表示中の盤面。真なら裏盤面（Shift）で、キーボード図も一覧もこちらに揃える。 */
@@ -900,6 +902,10 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
             <span class="field-label">${t("layout.title")}</span>
             <div data-keyboard-layout></div>
           </div>
+          <div class="header-field">
+            <span class="field-label">${t("autostart.title")}</span>
+            <div data-autostart></div>
+          </div>
         </div>
       </header>
       <section class="activation-card">
@@ -960,6 +966,28 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         (value) => {
           config.keyboard_layout = value;
           void save();
+        },
+      ),
+    );
+
+    // 表示は OS に登録されているかどうかそのまま。切り替えたら Rust 側が読み直した状態を使う。
+    shell.querySelector("[data-autostart]")?.append(
+      segmented<"on" | "off">(
+        [
+          ["on", t("autostart.on")],
+          ["off", t("autostart.off")],
+        ],
+        launchAtLogin ? "on" : "off",
+        async (value) => {
+          try {
+            launchAtLogin = await invoke<boolean>("set_launch_at_login", { enabled: value === "on" });
+            paint();
+            showStatus(t(launchAtLogin ? "status.autostartOn" : "status.autostartOff", { app: APP_NAME }));
+          } catch (error) {
+            launchAtLogin = await invoke<boolean>("get_launch_at_login").catch(() => launchAtLogin);
+            paint();
+            showStatus(translateError(error), "error");
+          }
         },
       ),
     );

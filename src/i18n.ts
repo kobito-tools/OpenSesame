@@ -45,6 +45,12 @@ const ja = {
   "layout.keyboard-jis": "JIS配列",
   "layout.keyboard-us": "英字配列",
 
+  "autostart.title": "ログイン時に起動",
+  "autostart.on": "オン",
+  "autostart.off": "オフ",
+  "status.autostartOn": "ログイン時に{app}を起動します",
+  "status.autostartOff": "ログイン時の起動をやめました",
+
   "pane.keyboard.title": "キーボード配列",
   "layer.front": "表盤面",
   "layer.back": "裏盤面（Shift）",
@@ -162,6 +168,7 @@ const ja = {
   "error.accessibility-denied": "アクセシビリティ権限が付与されていません",
   "error.event-tap-failed": "キーボード監視を開始できませんでした: {0}",
   "error.open-settings-failed": "システム設定を開けませんでした: {0}",
+  "error.autostart-failed": "ログイン時の起動を切り替えられませんでした: {0}",
   "error.invalid-command": "コマンドを1行で入力してください",
   "error.missing-working-dir": "作業フォルダが見つかりません: {0}",
   "error.command-spawn-failed": "コマンドを起動できませんでした: {0}",
@@ -208,6 +215,12 @@ const en: Record<MessageKey, string> = {
   "layout.title": "Keyboard layout",
   "layout.keyboard-jis": "JIS",
   "layout.keyboard-us": "ANSI",
+
+  "autostart.title": "Open at login",
+  "autostart.on": "On",
+  "autostart.off": "Off",
+  "status.autostartOn": "{app} will open when you log in",
+  "status.autostartOff": "{app} will no longer open at login",
 
   "pane.keyboard.title": "Keyboard layout",
   "layer.front": "Main",
@@ -326,6 +339,7 @@ const en: Record<MessageKey, string> = {
   "error.accessibility-denied": "Accessibility permission has not been granted",
   "error.event-tap-failed": "Could not start keyboard monitoring: {0}",
   "error.open-settings-failed": "Could not open System Settings: {0}",
+  "error.autostart-failed": "Could not change opening at login: {0}",
   "error.invalid-command": "Enter the command on one line",
   "error.missing-working-dir": "Working folder not found: {0}",
   "error.command-spawn-failed": "Could not start the command: {0}",
