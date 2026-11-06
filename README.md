@@ -129,7 +129,7 @@ At the top right of the settings window, switch the language (日本語 / Englis
 
 ### Open at login
 
-Open **System Settings → General → Login Items**, click **+** under “Open at Login”, and add OpenSesame!.
+At the top right of the settings window, set **Open at login** to **On**. OpenSesame! then starts in the menu bar when you log in, without opening the settings window. Set it to **Off** to stop. If you added OpenSesame! to **System Settings → General → Login Items** yourself before, remove it there so it is not started twice.
 
 ### Quit
 
