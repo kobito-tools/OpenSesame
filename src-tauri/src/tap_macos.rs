@@ -37,6 +37,7 @@ extern "C" {
     fn CGEventTapIsEnabled(tap: CFRef) -> bool;
     fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
     fn CGEventGetFlags(event: CGEventRef) -> u64;
+    fn CGEventSourceKeyState(state_id: i32, key: u16) -> bool;
 }
 
 #[link(name = "CoreFoundation", kind = "framework")]
@@ -59,6 +60,11 @@ const EVENT_TAP_DISABLED_BY_TIMEOUT: u32 = 0xFFFF_FFFE;
 const EVENT_TAP_DISABLED_BY_USER_INPUT: u32 = 0xFFFF_FFFF;
 
 const FIELD_KEYCODE: u32 = 9;
+
+/// キーボードの実際の状態。合成イベントの影響を受けない。
+const SOURCE_STATE_HID_SYSTEM: i32 = 1;
+/// macOSのキーコードの上限（kVK_*は0x7F以下）。
+const MAX_KEYCODE: i64 = 0x7F;
 
 /// タップの寿命はアプリと同じなので、メインスレッドに置いたまま解放しない。
 struct TapContext {
@@ -93,6 +99,18 @@ extern "C" fn callback(
         return event;
     };
 
+    // 取りこぼした「離した」イベントの分を、実際のキーの状態で埋め合わせる。
+    // いま届いたキーは、これから下の処理で押下か解放かを判断するので対象にしない。
+    if matches!(
+        event_type,
+        EVENT_KEY_DOWN | EVENT_KEY_UP | EVENT_FLAGS_CHANGED
+    ) {
+        let flags = unsafe { CGEventGetFlags(event) };
+        if let Ok(mut machine) = context.machine.lock() {
+            machine.forget_released(|key| key == name || still_down(key, flags));
+        }
+    }
+
     let verdict = match event_type {
         EVENT_KEY_DOWN => with_machine(context, |machine| machine.on_press(name)),
         EVENT_KEY_UP => with_machine(context, |machine| machine.on_release(name)),
@@ -116,6 +134,25 @@ extern "C" fn callback(
         Verdict::Swallow => ptr::null_mut(),
         Verdict::Pass => event,
     }
+}
+
+/// キーがまだ押されているか。押されていないと言い切れるときだけ偽を返す。
+/// 修飾キーはイベントのフラグとキーボードの状態の両方が「離した」と言うときだけ離したと見なす。
+/// 他のアプリが合成したイベントはフラグを持たないことがあり、
+/// セキュア入力の最中はキーボードの状態が読めないことがあるため、片方だけでは外さない。
+fn still_down(name: &str, flags: u64) -> bool {
+    // CapsLockのビットはロック状態で、押しているかどうかではない。
+    if name == "CapsLock" {
+        return true;
+    }
+    if let Some(mask) = crate::keys::macos_modifier_mask(name) {
+        if flags & mask != 0 {
+            return true;
+        }
+    }
+    (0..=MAX_KEYCODE)
+        .filter(|&code| crate::keys::key_name_from_macos_code(code) == Some(name))
+        .any(|code| unsafe { CGEventSourceKeyState(SOURCE_STATE_HID_SYSTEM, code as u16) })
 }
 
 fn with_machine(context: &TapContext, action: impl FnOnce(&mut Machine) -> Verdict) -> Verdict {

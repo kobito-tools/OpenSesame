@@ -130,6 +130,24 @@ impl Machine {
         Verdict::Pass
     }
 
+    /// 離したことを取りこぼしたキーを、押したままの記録から外す。
+    /// タップが一時的に切られたときやセキュア入力の最中は離したイベントが届かず、
+    /// 起動キーが押されたままと見なされて、次に押してもパネルが出なくなる。
+    pub fn forget_released(&mut self, still_down: impl Fn(&str) -> bool) {
+        if !prune_released(&mut self.pressed, &mut self.consumed, still_down) {
+            return;
+        }
+        let activation = match self.activation.read() {
+            Ok(keys) => keys.clone(),
+            Err(_) => return,
+        };
+        if self.armed && !activation_is_down(&self.pressed, &activation) {
+            self.armed = false;
+            let _ = self.popup.send(PopupCommand::Hide);
+            self.sync_layer(false);
+        }
+    }
+
     pub fn on_release(&mut self, key: &str) -> Verdict {
         let swallow = self.consumed.remove(key);
         self.pressed.remove(key);
@@ -332,6 +350,20 @@ fn layer_shift_down(pressed: &HashSet<String>, activation: &HashSet<String>) -> 
         .any(|key| pressed.contains(*key) && !activation.contains(*key))
 }
 
+/// もう押されていないキーを外す。何か外したら真。
+/// 飲み込み予定のキーも外さないと、次にふつうに押したとき離す側だけが飲まれて
+/// 元のアプリでキーが押しっぱなしになる。
+fn prune_released(
+    pressed: &mut HashSet<String>,
+    consumed: &mut HashSet<String>,
+    still_down: impl Fn(&str) -> bool,
+) -> bool {
+    let before = pressed.len() + consumed.len();
+    pressed.retain(|key| still_down(key));
+    consumed.retain(|key| pressed.contains(key));
+    pressed.len() + consumed.len() != before
+}
+
 fn activation_is_down(pressed: &HashSet<String>, activation: &HashSet<String>) -> bool {
     !activation.is_empty() && activation.iter().all(|key| pressed.contains(key))
 }
@@ -423,8 +455,13 @@ fn show_popup(app: &AppHandle) {
     }
     // フルスクリーンのSpaceへ移るたびに効くよう、表示の直前に毎回設定し直す。
     #[cfg(target_os = "macos")]
-    crate::float_popup_over_fullscreen(&window);
+    {
+        crate::before_popup_shown();
+        crate::float_popup_over_fullscreen(&window);
+    }
     let _ = window.show();
+    #[cfg(target_os = "macos")]
+    crate::bring_popup_to_front(&window);
     // 表示のたびにキーを浮き上がらせるので、画面側へ再生の合図を送る。
     let _ = app.emit_to("popup", "popup-shown", ());
 }
@@ -433,6 +470,8 @@ fn hide_popup(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("popup") {
         let _ = window.hide();
     }
+    #[cfg(target_os = "macos")]
+    crate::after_popup_hidden(app);
 }
 
 fn show_settings(app: &AppHandle) {
@@ -469,6 +508,22 @@ mod tests {
         assert!(layer_shift_down(&pressed, &activation));
         let plain = keys(&["ControlLeft", "AltLeft"]);
         assert!(layer_shift_down(&keys(&["ControlLeft", "AltLeft", "ShiftLeft"]), &plain));
+    }
+
+    #[test]
+    fn released_keys_are_forgotten() {
+        let activation = keys(&["ControlLeft", "AltLeft"]);
+        // AltLeftを離したイベントを取りこぼした状態。
+        let mut pressed = keys(&["ControlLeft", "AltLeft", "KeyA"]);
+        let mut consumed = keys(&["KeyA"]);
+        let changed = prune_released(&mut pressed, &mut consumed, |key| key == "ControlLeft");
+        assert!(changed);
+        assert_eq!(pressed, keys(&["ControlLeft"]));
+        assert!(consumed.is_empty());
+        assert!(!activation_is_down(&pressed, &activation));
+
+        let mut consumed = HashSet::new();
+        assert!(!prune_released(&mut pressed, &mut consumed, |_| true));
     }
 
     #[test]

@@ -141,6 +141,8 @@ Click the OpenSesame! icon in the menu bar and choose **Quit OpenSesame!**.
 
 - Make sure Accessibility permission is turned on. If it stopped working after an update, select OpenSesame! in the Accessibility list, remove it with **−**, and add it again.
 - If you use VoiceOver, the default activation keys (Control + Option) are the same as the VoiceOver modifier. Change the activation keys.
+- While you type in a password field, or while Terminal’s **Secure Keyboard Entry** is on, macOS does not pass key presses to other apps. The panel may not appear, or its keys may do nothing. Move to another field or turn Secure Keyboard Entry off.
+- Some full-screen games take over the whole display, and nothing can be shown on top of them. Switch the game to windowed or borderless mode.
 
 ### Windows are not laid out
 

@@ -731,6 +731,66 @@ pub(crate) fn float_popup_over_fullscreen(window: &tauri::WebviewWindow) {
     ns_window.setLevel(NSPopUpMenuWindowLevel);
 }
 
+/// 表示した後に呼ぶ。OpenSesame! は常駐していて前面のアプリではないため、
+/// ふつうの表示（orderFront）だと同じ高さに他のアプリのウィンドウがあると裏に回ることがある。
+/// アプリが前面かどうかに関係なく、同じ高さのいちばん手前に出す。
+#[cfg(target_os = "macos")]
+pub(crate) fn bring_popup_to_front(window: &tauri::WebviewWindow) {
+    use objc2_app_kit::NSWindow;
+    let Ok(pointer) = window.ns_window() else {
+        return;
+    };
+    // ns_windowはTauriが保持するNSWindowを指し、ここはメインスレッドで呼ばれる。
+    let ns_window = unsafe { &*pointer.cast::<NSWindow>() };
+    ns_window.orderFrontRegardless();
+}
+
+/// パネルを出すためにDockから一時的に外したか。隠すときに元へ戻す。
+#[cfg(target_os = "macos")]
+static DOCK_HIDDEN_FOR_POPUP: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// 設定画面を開いている間はDockに出る通常アプリなので、他のアプリのフルスクリーンの上に
+/// パネルが出られない。他のアプリを使っている最中にパネルを出すときだけ、
+/// 出している間は常駐のアクセサリに切り替える。メインスレッドで呼ぶこと。
+#[cfg(target_os = "macos")]
+pub(crate) fn before_popup_shown() {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+    let Some(main_thread) = MainThreadMarker::new() else {
+        return;
+    };
+    let ns_app = NSApplication::sharedApplication(main_thread);
+    // 設定画面を使っている最中なら同じSpaceにいるので、切り替えなくても出る。
+    if ns_app.activationPolicy() != NSApplicationActivationPolicy::Regular || ns_app.isActive() {
+        return;
+    }
+    if ns_app.setActivationPolicy(NSApplicationActivationPolicy::Accessory) {
+        DOCK_HIDDEN_FOR_POPUP.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// パネルを隠した後に呼ぶ。設定画面がまだ開いていれば、Dockに戻す。メインスレッドで呼ぶこと。
+#[cfg(target_os = "macos")]
+pub(crate) fn after_popup_hidden(app: &tauri::AppHandle) {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+    if !DOCK_HIDDEN_FOR_POPUP.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let settings_open = app
+        .get_webview_window("settings")
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false);
+    let Some(main_thread) = MainThreadMarker::new() else {
+        return;
+    };
+    if settings_open {
+        NSApplication::sharedApplication(main_thread)
+            .setActivationPolicy(NSApplicationActivationPolicy::Regular);
+    }
+}
+
 /// macOS 10.14以降、Dockに出る通常アプリのウィンドウは他アプリのフルスクリーンの上に
 /// 出られない。設定画面を閉じている間はDockから外し、常駐のアクセサリとして振る舞う。
 #[cfg(target_os = "macos")]
