@@ -1,3 +1,4 @@
+mod autostart;
 mod command;
 mod favicon;
 mod frontmost;
@@ -795,6 +796,7 @@ pub fn run() {
     // 他の版と並んで動くとキーフックが二重になるので、ウィンドウを作る前に片付ける。
     instance::take_over_or_exit();
     tauri::Builder::default()
+        .plugin(autostart::plugin())
         .setup(|app| {
             // シリーズのほかのアプリが起動のしかたを知れるよう、起動のたびに書き直す。
             // 書けなくても、ランチャーの機能には関係しないので起動は止めない。
@@ -823,6 +825,13 @@ pub fn run() {
             apply_vibrancy_to_windows(app.handle());
             // トレイが作れない環境でも本体の機能は動くので、起動は止めない。
             let _ = build_tray(app, &language);
+            autostart::refresh(app.handle());
+            // 設定画面は最初は隠してある。ログイン時の起動では出さずに常駐だけする。
+            if autostart::launched_at_login() {
+                set_dock_visible(app.handle(), false);
+            } else {
+                show_settings_window(app.handle());
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -845,7 +854,9 @@ pub fn run() {
             refetch_website_icon,
             select_custom_icon,
             runtime_info,
-            open_accessibility_settings
+            open_accessibility_settings,
+            autostart::get_launch_at_login,
+            autostart::set_launch_at_login
         ])
         .build(tauri::generate_context!())
         .expect("error while building OpenSesame!")

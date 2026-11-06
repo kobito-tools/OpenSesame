@@ -20,7 +20,7 @@
         "minWidth": 900,
         "minHeight": 640,
         "center": true,
-        "visible": true,
+        "visible": false,
         "transparent": true
       },
       {
