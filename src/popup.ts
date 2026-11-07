@@ -4,6 +4,7 @@ import { setLanguage, t } from "./i18n";
 import { buildKeyboard, fallbackGlyph, type KeyboardSlot } from "./keys";
 import { kobito } from "./kobito";
 import type { LauncherConfig, LauncherItem, WindowActionBinding } from "./types";
+import { actionName } from "./windowActions";
 
 type DisplayEntry = {
   kind: LauncherItem["type"] | "window";
@@ -29,16 +30,12 @@ function entries(config: LauncherConfig, back: boolean): DisplayEntry[] {
       (item): item is WindowActionBinding & { key: string } =>
         Boolean(item.key) && (item.shift ?? false) === back,
     )
-    .map((item) => {
-      const key = `action.${item.action}` as const;
-      const translated = t(key as never);
-      return {
-        kind: "window" as const,
-        name: translated === key ? item.name : translated,
-        key: item.key,
-        action: item.action,
-      };
-    });
+    .map((item) => ({
+      kind: "window" as const,
+      name: actionName(item),
+      key: item.key,
+      action: item.action,
+    }));
   return [...windows, ...targets];
 }
 
