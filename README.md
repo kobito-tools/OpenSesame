@@ -16,7 +16,7 @@ OpenSesame! is part of [kobito-tools](https://github.com/kobito-tools), a series
 
 | Type | What happens when you press the key |
 |---|---|
-| Window layout | Moves and resizes the frontmost window: halves, quarters, thirds, two thirds, center, maximize |
+| Window layout | Moves and resizes the frontmost window: halves, quarters, thirds, two thirds, edge adjustments, moving to the next display and more. See [Window layouts](#window-layouts) |
 | App | Launches the app, or brings it to the front. It can also hide the app if it is already in front |
 | Folder | Opens the folder in Finder |
 | Website | Opens the URL in your default browser |
@@ -92,6 +92,24 @@ You can also use **＋ App**, **＋ Folder**, **＋ Website** and **＋ Command*
 In the list at the bottom of the settings window, you can change an item’s display name and key. Drag an assigned key onto another key on the keyboard to move it. Click **Icon** to use any PNG image as the icon.
 
 For apps, turn on **Hide if in front** to hide the app when you press its key while it is already in front. Each press then switches between showing and hiding it.
+
+### Window layouts
+
+Window layouts work on the frontmost window, within the display it is mostly on. The menu bar and the Dock are left uncovered.
+
+| Group | Layouts |
+|---|---|
+| Halves | Left, right, top and bottom half |
+| Quarters | Top left, top right, bottom left and bottom right quarter |
+| Thirds | Left, center and right third; top, middle and bottom third |
+| Two thirds | Left, center and right two thirds; top, middle and bottom two thirds |
+| Edges | Grow or shrink the left, right, top or bottom edge. Each press moves only that edge by 1/12 of the screen, so press repeatedly to fine-tune. It stops at the screen edge and at a minimum size |
+| Move & more | Center (keeps the size), almost maximize (leaves a small margin), maximize, move to next display, restore |
+
+- **Move to next display** moves the window to the next display from left to right (after the last one, back to the first), keeping its relative position and size.
+- **Restore** puts the window back where it was before OpenSesame! first arranged it. Several layouts in a row still restore to the starting point. If you have moved the window by hand since, there is nothing to restore.
+
+When you choose **Window layout** for a key, the layouts are shown in these groups with a small diagram each. Type in the search box to search all groups. In the list at the bottom of the settings window, **Layouts without a key** shows the same groups, and you can pick a key for each layout there.
 
 ### Run a command
 
