@@ -414,6 +414,25 @@ fn find_window_action(
 }
 
 fn launch(app: AppHandle, item: LauncherItem) {
+    // 解像度と壁紙は、できなかったこと（画面が無い・画像が無いなど）を知らせ欄に出し、何も変えない。
+    if matches!(item.target_type, TargetType::Display | TargetType::Wallpaper) {
+        thread::spawn(move || {
+            let result = match (&item.target_type, &item.display, &item.wallpaper) {
+                (TargetType::Display, Some(setting), _) => crate::display::apply(&app, setting),
+                (TargetType::Display, None, _) => Err(error("invalid-display-setting", "")),
+                (_, _, setting) => crate::wallpaper::apply(
+                    &app,
+                    &item.target.value,
+                    &setting.clone().unwrap_or_default(),
+                ),
+            };
+            if let Err(message) = result {
+                let _ = app.emit("launch-failed", message);
+                show_settings(&app);
+            }
+        });
+        return;
+    }
     if matches!(item.target_type, TargetType::Command) {
         // 起動できなかったことは設定画面の知らせ欄に出す。ふだんは閉じているので開いて見せる。
         crate::command::launch(
