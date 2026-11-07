@@ -1,5 +1,6 @@
 mod autostart;
 mod command;
+mod display;
 mod favicon;
 mod frontmost;
 mod icons;
@@ -11,14 +12,15 @@ mod series;
 mod storage;
 #[cfg(target_os = "macos")]
 mod tap_macos;
+mod wallpaper;
 mod window_layout;
 
 use icons::{cache_system_icon, copy_custom_icon};
 use input::{ActivationKeys, InputError};
 use keys::{normalize_modifier, ASSIGNABLE_KEYS};
 use model::{
-    LauncherConfig, LauncherItem, RuntimeInfo, TargetIcon, TargetPath, TargetType, KEYBOARD_LAYOUTS,
-    LANGUAGES,
+    DisplaySetting, LauncherConfig, LauncherItem, RuntimeInfo, TargetIcon, TargetPath, TargetType,
+    WallpaperSetting, KEYBOARD_LAYOUTS, LANGUAGES, WALLPAPER_FITS,
 };
 use serde::Serialize;
 use std::{
@@ -154,6 +156,8 @@ async fn select_target(
             value: cached,
         },
         hide_when_frontmost: false,
+        display: None,
+        wallpaper: None,
     }))
 }
 
@@ -199,6 +203,8 @@ async fn create_website(
             value: icon,
         },
         hide_when_frontmost: false,
+        display: None,
+        wallpaper: None,
     })
 }
 
@@ -249,7 +255,120 @@ fn create_command(
             value: None,
         },
         hide_when_frontmost: false,
+        display: None,
+        wallpaper: None,
     })
+}
+
+/// 解像度の切り替えを登録項目にする。表示名は設定画面が言語に合わせて作って渡す。
+#[tauri::command]
+fn create_display_item(
+    setting: DisplaySetting,
+    name: String,
+    key: Option<String>,
+    shift: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<LauncherItem, String> {
+    let shift = shift.unwrap_or(false);
+    let key = match key {
+        Some(requested) => {
+            validate_key(&requested)?;
+            requested
+        }
+        None => next_available_key(&state.config, shift)?,
+    };
+    let item = LauncherItem {
+        id: Uuid::new_v4().to_string(),
+        target_type: TargetType::Display,
+        name: name.trim().to_string(),
+        key,
+        shift,
+        target: TargetPath {
+            kind: "display".into(),
+            value: setting.screen.name.clone(),
+            ..Default::default()
+        },
+        icon: TargetIcon {
+            kind: "system".into(),
+            value: None,
+        },
+        hide_when_frontmost: false,
+        display: Some(setting),
+        wallpaper: None,
+    };
+    check_item(&item)?;
+    Ok(item)
+}
+
+/// 壁紙の切り替えを登録項目にする。表示名を省略したときは画像のファイル名を使う。
+#[tauri::command]
+fn create_wallpaper(
+    path: String,
+    setting: WallpaperSetting,
+    name: Option<String>,
+    key: Option<String>,
+    shift: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<LauncherItem, String> {
+    let path = path.trim().to_string();
+    if !Path::new(&path).is_absolute() {
+        return Err(error("invalid-path", &path));
+    }
+    wallpaper::check_image(&path)?;
+    let name = name
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| display_name(Path::new(&path)));
+    let shift = shift.unwrap_or(false);
+    let key = match key {
+        Some(requested) => {
+            validate_key(&requested)?;
+            requested
+        }
+        None => next_available_key(&state.config, shift)?,
+    };
+    let item = LauncherItem {
+        id: Uuid::new_v4().to_string(),
+        target_type: TargetType::Wallpaper,
+        name,
+        key,
+        shift,
+        target: TargetPath {
+            kind: "path".into(),
+            value: path,
+            ..Default::default()
+        },
+        icon: TargetIcon {
+            kind: "system".into(),
+            value: None,
+        },
+        hide_when_frontmost: false,
+        display: None,
+        wallpaper: Some(setting),
+    };
+    check_item(&item)?;
+    Ok(item)
+}
+
+/// つながっている画面と、それぞれの表示モードの一覧。読むだけで何も変えない。
+#[tauri::command]
+async fn list_displays(app: tauri::AppHandle) -> Result<Vec<display::DisplayInfo>, String> {
+    tauri::async_runtime::spawn_blocking(move || display::list(&app))
+        .await
+        .map_err(|failure| failure.to_string())?
+}
+
+/// 壁紙にする画像を選ぶ。登録はせず、選んだパスを返すだけ。
+#[tauri::command]
+async fn pick_image() -> Option<String> {
+    rfd::AsyncFileDialog::new()
+        .add_filter(
+            "Images",
+            &["png", "jpg", "jpeg", "heic", "heif", "tif", "tiff", "gif", "bmp", "webp"],
+        )
+        .pick_file()
+        .await
+        .map(|file| file.path().to_string_lossy().into_owned())
 }
 
 /// コマンドの作業フォルダを選ぶ。登録はせず、選んだパスを返すだけ。
@@ -410,8 +529,18 @@ fn validate_config(config: &LauncherConfig, previous: &LauncherConfig) -> Result
     }
     for item in &config.items {
         match item.target_type {
-            TargetType::Website => {}
+            TargetType::Website | TargetType::Display => {}
             TargetType::Command => validate_working_dir(item, previous)?,
+            // 画像は新しく選んだときだけ確かめる。後から消えたときはキーを押したときに知らせる。
+            TargetType::Wallpaper => {
+                let already_registered = previous
+                    .items
+                    .iter()
+                    .any(|saved| saved.id == item.id && saved.target.value == item.target.value);
+                if !already_registered {
+                    wallpaper::check_image(&item.target.value)?;
+                }
+            }
             TargetType::Application | TargetType::Folder => {
                 let already_registered = previous
                     .items
@@ -545,8 +674,41 @@ fn check_item(item: &LauncherItem) -> Result<(), String> {
                 return Err(error("invalid-path", value));
             }
         }
+        TargetType::Display => check_display_setting(item.display.as_ref())?,
+        TargetType::Wallpaper => {
+            if !Path::new(value).is_absolute() {
+                return Err(error("invalid-path", value));
+            }
+            if let Some(setting) = &item.wallpaper {
+                if !WALLPAPER_FITS.contains(&setting.fit.as_str()) {
+                    return Err(error("invalid-wallpaper-fit", &setting.fit));
+                }
+            }
+        }
     }
     Ok(())
+}
+
+/// 巡回に入れられる解像度の数。設定画面の選択と同じ上限。
+const MAX_DISPLAY_MODES: usize = 8;
+
+fn check_display_setting(setting: Option<&DisplaySetting>) -> Result<(), String> {
+    let valid = setting.is_some_and(|setting| {
+        (1..=MAX_DISPLAY_MODES).contains(&setting.modes.len())
+            && setting.modes.iter().all(|mode| {
+                mode.width > 0
+                    && mode.height > 0
+                    && mode.pixel_width >= mode.width
+                    && mode.pixel_height >= mode.height
+                    && mode.refresh.is_finite()
+                    && mode.refresh >= 0.0
+            })
+    });
+    if valid {
+        Ok(())
+    } else {
+        Err(error("invalid-display-setting", ""))
+    }
 }
 
 /// 作業フォルダはパスと同じく、新しく指定したときだけ存在を確かめる。
@@ -911,6 +1073,10 @@ pub fn run() {
             create_website,
             create_command,
             pick_folder,
+            create_display_item,
+            create_wallpaper,
+            list_displays,
+            pick_image,
             refetch_website_icon,
             select_custom_icon,
             runtime_info,
@@ -997,6 +1163,8 @@ mod tests {
                 value: None,
             },
             hide_when_frontmost: false,
+            display: None,
+            wallpaper: None,
         });
         assert!(validate_config(&config, &LauncherConfig::default()).is_err());
     }
@@ -1019,6 +1187,8 @@ mod tests {
                 value: None,
             },
             hide_when_frontmost: false,
+            display: None,
+            wallpaper: None,
         }
     }
 
@@ -1269,5 +1439,90 @@ mod tests {
         );
         config.activation.macos = vec!["ShiftLeft".into(), "ControlLeft".into()];
         assert!(validate_config(&config, &LauncherConfig::default()).is_ok());
+    }
+    fn display_item(id: &str, key: &str, modes: Vec<model::DisplayModeRef>) -> LauncherItem {
+        let mut item = item_at(id, key, "");
+        item.target_type = TargetType::Display;
+        item.target.kind = "display".into();
+        item.target.value = "Studio Display".into();
+        item.display = Some(DisplaySetting {
+            screen: model::ScreenRef {
+                vendor: 0x610,
+                model: 0xae31,
+                serial: 0,
+                name: "Studio Display".into(),
+            },
+            modes,
+        });
+        item
+    }
+
+    fn mode(width: u32, height: u32, refresh: f64) -> model::DisplayModeRef {
+        model::DisplayModeRef {
+            width,
+            height,
+            pixel_width: width * 2,
+            pixel_height: height * 2,
+            refresh,
+        }
+    }
+
+    #[test]
+    fn display_items_need_one_to_eight_valid_modes() {
+        assert!(check_item(&display_item("d", "KeyD", vec![mode(2560, 1440, 0.0)])).is_ok());
+        assert!(check_item(&display_item("d", "KeyD", vec![mode(2560, 1440, 0.0), mode(1920, 1080, 60.0)])).is_ok());
+        let invalid = "applauncher-error:invalid-display-setting";
+        assert_eq!(check_item(&display_item("d", "KeyD", vec![])).unwrap_err(), invalid);
+        assert_eq!(check_item(&display_item("d", "KeyD", vec![mode(2560, 1440, 0.0); 9])).unwrap_err(), invalid);
+        assert_eq!(check_item(&display_item("d", "KeyD", vec![mode(0, 1440, 0.0)])).unwrap_err(), invalid);
+        assert_eq!(check_item(&display_item("d", "KeyD", vec![mode(2560, 1440, f64::NAN)])).unwrap_err(), invalid);
+        let mut missing = display_item("d", "KeyD", vec![mode(2560, 1440, 0.0)]);
+        missing.display = None;
+        assert_eq!(check_item(&missing).unwrap_err(), invalid);
+        // つながっていない画面でも登録はできる（押したときに知らせる）。
+        let mut config = LauncherConfig::default();
+        config.items.push(display_item("d", "KeyD", vec![mode(2560, 1440, 0.0)]));
+        assert!(validate_config(&config, &LauncherConfig::default()).is_ok());
+    }
+
+    fn wallpaper_item(id: &str, path: &str, fit: &str) -> LauncherItem {
+        let mut item = item_at(id, "KeyW", path);
+        item.target_type = TargetType::Wallpaper;
+        item.wallpaper = Some(WallpaperSetting {
+            screen: None,
+            fit: fit.into(),
+        });
+        item
+    }
+
+    #[test]
+    fn wallpaper_items_need_an_existing_image_only_when_it_changes() {
+        let image = std::env::temp_dir().join(format!("opensesame-{}.png", Uuid::new_v4()));
+        fs::write(&image, b"x").unwrap();
+        let image_path = image.to_string_lossy().into_owned();
+        let mut config = LauncherConfig::default();
+        config.items.push(wallpaper_item("w", &image_path, "fit"));
+        assert!(validate_config(&config, &LauncherConfig::default()).is_ok());
+
+        assert_eq!(
+            check_item(&wallpaper_item("w", "relative.png", "fill")).unwrap_err(),
+            "applauncher-error:invalid-path:relative.png"
+        );
+        assert_eq!(
+            check_item(&wallpaper_item("w", &image_path, "tile")).unwrap_err(),
+            "applauncher-error:invalid-wallpaper-fit:tile"
+        );
+
+        // 保存済みの画像が後から消えても、名前の変更などは保存できる。
+        let saved = config.clone();
+        fs::remove_file(&image).unwrap();
+        config.items[0].name = "Renamed".into();
+        assert!(validate_config(&config, &saved).is_ok());
+        // 新しく選んだ画像は、あることを確かめる。
+        config.items[0].target.value = "/nonexistent/opensesame.png".into();
+        assert_eq!(
+            validate_config(&config, &saved).unwrap_err(),
+            "applauncher-error:image-not-found:/nonexistent/opensesame.png"
+        );
     }
 }

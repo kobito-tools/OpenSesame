@@ -316,6 +316,8 @@ mod tests {
                 value: None,
             },
             hide_when_frontmost: false,
+            display: None,
+            wallpaper: None,
         });
         save(&path, &config).unwrap();
         let raw: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
@@ -330,6 +332,39 @@ mod tests {
 
     /// コマンドを割り当てられるようになった版の設定ファイルが、
     /// そのまま読めて、書き戻しても項目の形が変わらないこと。
+    #[test]
+    fn display_and_wallpaper_items_survive_a_save_and_load() {
+        let (dir, path) = temp_config("{}");
+        let contents = r#"{
+            "version": 4,
+            "activation": { "macos": ["ControlLeft", "AltLeft"], "windows": ["ControlLeft", "AltLeft"] },
+            "items": [
+                { "id": "d", "type": "display", "name": "Big", "key": "KeyD",
+                  "target": { "kind": "display", "value": "DELL" },
+                  "icon": { "kind": "system" },
+                  "display": { "screen": { "vendor": 4268, "model": 1, "serial": 2, "name": "DELL" },
+                               "modes": [ { "width": 1920, "height": 1080, "pixel_width": 3840, "pixel_height": 2160 } ] } },
+                { "id": "w", "type": "wallpaper", "name": "Sea", "key": "KeyW",
+                  "target": { "kind": "path", "value": "/tmp/sea.jpg" },
+                  "icon": { "kind": "system" } }
+            ]
+        }"#;
+        fs::write(&path, contents).unwrap();
+        let config = load_or_create(&path).unwrap();
+        let display = config.items[0].display.as_ref().unwrap();
+        assert_eq!(display.modes[0].refresh, 0.0);
+        assert_eq!(display.screen.vendor, 4268);
+        // 壁紙の設定が無い古い形は、すべての画面・画面いっぱいとして読む。
+        assert!(config.items[1].wallpaper.is_none());
+        save(&path, &config).unwrap();
+        let raw: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(raw["items"][0]["type"], "display");
+        assert_eq!(raw["items"][0]["display"]["modes"][0]["pixel_width"], 3840);
+        assert!(raw["items"][1].get("wallpaper").is_none());
+        assert!(raw["items"][1].get("display").is_none());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn reads_a_config_with_commands_unchanged() {
         let original = r#"{

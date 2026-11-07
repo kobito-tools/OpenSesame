@@ -61,6 +61,68 @@ pub enum TargetType {
     Website,
     /// シェルで1行のコマンドを動かす。`target.value` がコマンドそのもの。
     Command,
+    /// 画面の解像度を変える。中身は `LauncherItem::display`。`target.value` は画面の名前（表示用）。
+    Display,
+    /// 壁紙を変える。`target.value` が画像のパス、表示の仕方などは `LauncherItem::wallpaper`。
+    Wallpaper,
+}
+
+/// 画面を覚えておくための手がかり。つなぎ直すと番号（CGDirectDisplayID）が変わることがあるので、
+/// メーカー・型番・製造番号と名前で探し直す（`display::find_screen`）。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ScreenRef {
+    #[serde(default)]
+    pub vendor: u32,
+    #[serde(default)]
+    pub model: u32,
+    #[serde(default)]
+    pub serial: u32,
+    #[serde(default)]
+    pub name: String,
+}
+
+/// 表示モード。`width`・`height` は見た目の解像度（ポイント）、`pixel_*` は実際の画素数。
+/// 両方がそろえば HiDPI かどうかまで決まる。`refresh` が 0 なら、使えるうちで最も高いものを選ぶ。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DisplayModeRef {
+    pub width: u32,
+    pub height: u32,
+    pub pixel_width: u32,
+    pub pixel_height: u32,
+    #[serde(default)]
+    pub refresh: f64,
+}
+
+/// 解像度の切り替え。`modes` が2つ以上なら、押すたびに次のモードへ巡回する。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DisplaySetting {
+    pub screen: ScreenRef,
+    pub modes: Vec<DisplayModeRef>,
+}
+
+/// 壁紙の対象と表示の仕方。`screen` が無ければすべての画面。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WallpaperSetting {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screen: Option<ScreenRef>,
+    #[serde(default = "default_wallpaper_fit")]
+    pub fit: String,
+}
+
+impl Default for WallpaperSetting {
+    fn default() -> Self {
+        Self {
+            screen: None,
+            fit: default_wallpaper_fit(),
+        }
+    }
+}
+
+/// 壁紙の表示の仕方。並びは設定画面の並び。
+pub const WALLPAPER_FITS: &[&str] = &["fill", "fit", "stretch", "center"];
+
+pub fn default_wallpaper_fit() -> String {
+    "fill".into()
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -94,6 +156,12 @@ pub struct LauncherItem {
     /// アプリが既に前面にあるときは、開く代わりに隠す（Windowsは最小化）。
     #[serde(default)]
     pub hide_when_frontmost: bool,
+    /// 解像度の切り替えの中身。種類が `display` のときだけ使う。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display: Option<DisplaySetting>,
+    /// 壁紙の対象と表示の仕方。種類が `wallpaper` のときだけ使う。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallpaper: Option<WallpaperSetting>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
