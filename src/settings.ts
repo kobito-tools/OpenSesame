@@ -22,6 +22,12 @@ import type {
   RuntimeInfo,
   WindowActionBinding,
 } from "./types";
+import {
+  actionName,
+  windowActionBrowser,
+  windowDiagram,
+  type WindowBrowserState,
+} from "./windowActions";
 
 /** 削除キーで録音を始める。macOSの delete は Backspace として届く。 */
 const CLEAR_KEYS = new Set(["Backspace", "Delete"]);
@@ -53,12 +59,12 @@ function targetIcon(item: LauncherItem): HTMLElement {
 function windowIcon(action: string): HTMLElement {
   const visual = document.createElement("div");
   visual.className = "table-icon window-table-icon";
-  const diagram = document.createElement("span");
-  diagram.className = "window-diagram";
-  diagram.dataset.action = action;
-  visual.append(diagram);
+  visual.append(windowDiagram(action));
   return visual;
 }
+
+/** ピッカーで最後に見ていた分類。開き直しても同じ分類から始める。 */
+const pickerBrowserState: WindowBrowserState = { group: "halves", query: "" };
 
 function sectionLabel(title: string, description?: string): HTMLElement {
   const heading = document.createElement("div");
@@ -116,6 +122,8 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
   let back = false;
   /** キーの無い組み込みのウィンドウ整形を広げて見せるか。描き直しても保つ。 */
   let showUnassignedWindows = false;
+  /** 一覧側の整形の分類と検索語。描き直しても保つ。 */
+  const listBrowserState: WindowBrowserState = { group: "halves", query: "" };
   const onLayer = (entry: { shift?: boolean }) => (entry.shift ?? false) === back;
 
   /** 起動キー録音の状態。ホバー中に delete を押すと開始する。 */
@@ -249,13 +257,6 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     return select;
   };
 
-  /** ウィンドウ整形の名前は設定ファイルの値ではなく、現在の言語から引く。 */
-  const actionName = (binding: WindowActionBinding): string => {
-    const key = `action.${binding.action}` as const;
-    const translated = t(key as never);
-    return translated === key ? binding.name : translated;
-  };
-
   /** 現在の配列に存在しないキーは、配列図に出ないので一覧側で知らせる。 */
   const offLayout = (key: string | undefined) =>
     Boolean(key) && !layoutKeys(config.keyboard_layout).has(key as string);
@@ -291,6 +292,23 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     badge.textContent = t("badge.builtin");
     row.append(detail, select, offLayout(binding.key) ? offLayoutBadge() : badge);
     return row;
+  };
+
+  /** キーの無い整形の項目。図と短い名前、キーを選ぶ欄を縦に並べる。 */
+  const windowTile = (binding: WindowActionBinding, label: string): HTMLElement => {
+    const tile = document.createElement("div");
+    tile.className = "window-tile";
+    tile.title = actionName(binding);
+    const name = document.createElement("span");
+    name.className = "window-tile-name";
+    name.textContent = label;
+    const select = keySelect(`window-${binding.action}`, binding.key, true, (key) => {
+      binding.key = key;
+      binding.shift = Boolean(key) && back;
+      void save();
+    });
+    tile.append(windowIcon(binding.action), name, select);
+    return tile;
   };
 
   const hideToggle = (item: LauncherItem): HTMLElement => {
@@ -414,6 +432,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
 
     const paintChoices = () => {
       card.replaceChildren();
+      card.classList.remove("picker-wide");
       const title = document.createElement("strong");
       title.textContent = t("picker.title", { key: displayKey(code ?? "") });
       const lead = document.createElement("p");
@@ -463,33 +482,49 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
 
     const paintWindowActions = () => {
       card.replaceChildren();
+      card.classList.remove("picker-wide");
       const title = document.createElement("strong");
       title.textContent = t("picker.chooseAction", { key: displayKey(code ?? "") });
-      const list = document.createElement("div");
-      list.className = "picker-actions";
-      for (const binding of config.window_actions) {
-        const choice = document.createElement("button");
-        choice.type = "button";
-        choice.className = "picker-action";
-        const name = document.createElement("span");
-        name.textContent = actionName(binding);
-        choice.append(windowIcon(binding.action), name);
-        choice.addEventListener("click", () => {
-          // 同じ操作が別のキーに付いていたら、こちらへ付け替える。
-          if (code) {
-            binding.key = code;
-            binding.shift = back;
+      // 反対の盤面で使っている操作は、付け替えると向こうから消えるので出さない。
+      const choices = config.window_actions.filter((binding) => !binding.key || onLayer(binding));
+      const list = windowActionBrowser({
+        bindings: choices,
+        state: pickerBrowserState,
+        autofocus: true,
+        tile: (binding, label) => {
+          const choice = document.createElement("button");
+          choice.type = "button";
+          choice.className = "window-tile picker-tile";
+          choice.title = actionName(binding);
+          const name = document.createElement("span");
+          name.className = "window-tile-name";
+          name.textContent = label;
+          choice.append(windowIcon(binding.action), name);
+          if (binding.key) {
+            // 既に別のキーに付いている操作は、選ぶとこちらへ付け替わる。
+            const current = document.createElement("kbd");
+            current.className = "window-tile-key";
+            current.textContent = displayKey(binding.key);
+            current.title = t("windowBrowser.reassign", { key: displayKey(binding.key) });
+            choice.append(current);
           }
-          closePicker();
-          void save();
-        });
-        list.append(choice);
-      }
+          choice.addEventListener("click", () => {
+            if (code) {
+              binding.key = code;
+              binding.shift = back;
+            }
+            closePicker();
+            void save();
+          });
+          return choice;
+        },
+      });
       const backButton = createButton(t("picker.back"), "button compact");
       backButton.addEventListener("click", paintChoices);
       const footer = document.createElement("div");
       footer.className = "picker-footer";
       footer.append(backButton);
+      card.classList.add("picker-wide");
       card.append(title, list, footer);
     };
 
@@ -509,6 +544,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
 
     const paintWebsiteForm = () => {
       card.replaceChildren();
+      card.classList.remove("picker-wide");
       const title = document.createElement("strong");
       title.textContent = code
         ? t("picker.websiteTitle", { key: displayKey(code) })
@@ -549,6 +585,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     /** `editing` を渡すと、その登録済みコマンドを書き換える。 */
     const paintCommandForm = (editing?: LauncherItem) => {
       card.replaceChildren();
+      card.classList.remove("picker-wide");
       const title = document.createElement("strong");
       title.textContent = editing
         ? t("picker.commandEdit")
@@ -682,8 +719,16 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       });
       const summary = document.createElement("summary");
       summary.textContent = t("section.window.unassigned", { count: unassignedWindows.length });
-      group.append(summary);
-      for (const action of unassignedWindows) group.append(windowRow(action));
+      group.append(
+        summary,
+        windowActionBrowser({
+          bindings: unassignedWindows,
+          state: listBrowserState,
+          showCounts: true,
+          emptyGroupText: t("windowBrowser.allAssigned"),
+          tile: (binding, label) => windowTile(binding, label),
+        }),
+      );
       container.append(group);
     }
     container.append(sectionLabel(t("section.apps"), t("section.count", { count: apps.length })));
@@ -740,7 +785,16 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
-    if (!recorder.recording && event.key === "Escape" && root.querySelector(".picker-backdrop")) {
+    const clearingSearch =
+      event.target instanceof HTMLInputElement &&
+      event.target.classList.contains("window-search") &&
+      event.target.value !== "";
+    if (
+      !recorder.recording &&
+      !clearingSearch &&
+      event.key === "Escape" &&
+      root.querySelector(".picker-backdrop")
+    ) {
       event.preventDefault();
       closePicker();
       return;
