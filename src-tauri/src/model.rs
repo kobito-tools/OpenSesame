@@ -145,6 +145,7 @@ pub fn default_keyboard_layout() -> String {
 }
 
 pub fn default_window_actions() -> Vec<WindowActionBinding> {
+    // 設定画面の分類の順に並べる。保存済みの設定もこの順に並べ直す（`storage::fill_window_actions`）。
     [
         ("left-half", "画面左半分"),
         ("right-half", "画面右半分"),
@@ -157,10 +158,28 @@ pub fn default_window_actions() -> Vec<WindowActionBinding> {
         ("left-third", "画面左3分の1"),
         ("center-third", "画面中央3分の1"),
         ("right-third", "画面右3分の1"),
+        ("top-third", "画面上3分の1"),
+        ("middle-third", "画面中段3分の1"),
+        ("bottom-third", "画面下3分の1"),
         ("left-two-thirds", "画面左3分の2"),
+        ("center-two-thirds", "画面中央3分の2"),
         ("right-two-thirds", "画面右3分の2"),
+        ("top-two-thirds", "画面上3分の2"),
+        ("middle-two-thirds", "画面中段3分の2"),
+        ("bottom-two-thirds", "画面下3分の2"),
+        ("expand-left", "左端を広げる"),
+        ("shrink-left", "左端を縮める"),
+        ("expand-right", "右端を広げる"),
+        ("shrink-right", "右端を縮める"),
+        ("expand-top", "上端を広げる"),
+        ("shrink-top", "上端を縮める"),
+        ("expand-bottom", "下端を広げる"),
+        ("shrink-bottom", "下端を縮める"),
         ("center", "画面中央"),
+        ("almost-maximize", "ほぼ全画面"),
         ("maximize", "全画面表示"),
+        ("next-display", "隣の画面へ移す"),
+        ("restore", "整形前に戻す"),
     ]
     .into_iter()
     .map(|(action, name)| WindowActionBinding {
