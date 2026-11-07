@@ -6,7 +6,7 @@ English | [日本語](README.ja.md)
 
 OpenSesame! is a launcher for macOS that appears only while you hold down a key.
 
-Hold the activation keys (Left Control + Left Option by default) and a keyboard-shaped panel appears. Press one of your assigned keys to open an app, a folder or a website, run a command, or snap the frontmost window to the left half, right half and more.
+Hold the activation keys (Left Control + Left Option by default) and a keyboard-shaped panel appears. Press one of your assigned keys to open an app, a folder or a website, run a command, snap the frontmost window to the left half, right half and more, or change the display resolution or the wallpaper.
 
 OpenSesame! is part of [kobito-tools](https://github.com/kobito-tools), a series of small Mac apps.
 
@@ -21,6 +21,8 @@ OpenSesame! is part of [kobito-tools](https://github.com/kobito-tools), a series
 | Folder | Opens the folder in Finder |
 | Website | Opens the URL in your default browser |
 | Command | Runs a one-line terminal command, such as `uv run app.py` |
+| Resolution | Changes a display to the resolution you chose, or switches between two or more on each press. See [Change the display resolution](#change-the-display-resolution) |
+| Wallpaper | Sets a chosen image as the wallpaper of all displays or of one display. See [Change the wallpaper](#change-the-wallpaper) |
 
 Each key can hold two items: one on the main layer and one on the Shift layer.
 
@@ -73,7 +75,7 @@ The settings window starts in Japanese. Use the language menu at the top right t
 | Keys | What happens |
 |---|---|
 | Hold the activation keys | Shows the panel |
-| Activation keys + an assigned key | Runs that item: opens an app, folder or website, runs a command, or lays out the window |
+| Activation keys + an assigned key | Runs that item: opens an app, folder or website, runs a command, lays out the window, or changes the resolution or wallpaper |
 | Activation keys + Shift | Switches to the Shift layer. Release Shift to go back |
 | Activation keys + Shift + an assigned key | Runs the item on the Shift layer |
 | Activation keys + `.` (period) | Opens the settings window |
@@ -84,10 +86,10 @@ Closing the settings window does not quit OpenSesame!. It keeps running in the b
 ### Assign a key
 
 1. In the keyboard at the top of the settings window, click a free key.
-2. Choose **Window layout**, **Launch an app**, **Open a folder**, **Open a website** or **Run a command**.
+2. Choose **Window layout**, **Launch an app**, **Open a folder**, **Open a website**, **Run a command**, **Change the resolution** or **Change the wallpaper**.
 3. For an app or a folder, pick it in the dialog. For a website, enter the URL (`https://` can be left out) and a display name. For a command, see [Run a command](#run-a-command).
 
-You can also use **＋ App**, **＋ Folder**, **＋ Website** and **＋ Command** at the top right. They assign a free key for you.
+You can also use **＋ App**, **＋ Folder**, **＋ Website**, **＋ Command**, **＋ Resolution** and **＋ Wallpaper** at the top right. They assign a free key for you.
 
 In the list at the bottom of the settings window, you can change an item’s display name and key. Drag an assigned key onto another key on the keyboard to move it. Click **Icon** to use any PNG image as the icon.
 
@@ -127,6 +129,33 @@ You can assign the same command you would type in Terminal, for example `uv run 
 - Use **Edit** in the list to change a command. Use **Icon** to pick a PNG image (▶️ is shown otherwise).
 
 > **Warning:** A registered command runs as is every time you press its key. Register only commands you understand.
+
+### Change the display resolution
+
+Choose **Change the resolution** for a key, then pick a display from the tabs at the top and a resolution from the tiles.
+
+- The tiles show each resolution as it looks (for a Retina or other HiDPI display, the “looks like” size), one per size, with modes that match the display’s shape. **Current** marks the resolution in use and **Default** the display’s default. Turn on **More** to also see each refresh rate, non-HiDPI modes and modes with a different aspect ratio.
+- Pick two or more tiles to switch between them in the order you picked (up to 8). Each press moves to the next one, and back to the first after the last. Use this to switch between, say, a larger-text and a more-space resolution with one key.
+- The display is remembered by its maker, model, serial number and name, so the key still works after you unplug and reconnect it, even on another port.
+- If the display is not connected, or it does not offer that resolution, nothing changes and the settings window opens to tell you.
+- The change stays after you log out, just like changing it in System Settings. Use **Edit** in the list to pick other resolutions.
+
+### Change the wallpaper
+
+Choose **Change the wallpaper** for a key.
+
+| Field | What to enter |
+|---|---|
+| Image file | The path of the image. Type it, or use **Choose…** to pick one. PNG, JPEG, HEIC and other image files work |
+| Display | **All displays**, or one display |
+| Fit | **Fill screen**, **Fit to screen**, **Stretch** or **Center** |
+| Display name | The name shown on the panel and in the list. Empty means the image file name |
+
+- macOS changes the wallpaper only for the Space currently shown on each display. To change it on other Spaces (desktops), switch to them and press the key again.
+- If the image has been moved or deleted, or the chosen display is not connected, nothing changes and the settings window opens to tell you.
+- Use **Edit** in the list to change the image, display or fit.
+
+Changing the resolution and the wallpaper is available on macOS only.
 
 ### Use the Shift layer
 
@@ -169,6 +198,10 @@ Open **System Settings → Privacy & Security → Automation** and make sure “
 ### “Target not found” appears and settings cannot be saved
 
 A registered app or folder was moved or deleted, or it is on an external drive that is not connected. Remove the item from the list, or connect the drive.
+
+### The resolution or wallpaper does not change
+
+The bottom of the settings window tells you why. “Not connected” means the display you chose is not connected now. “No display mode matches” means the display does not offer that resolution now, for example after you connected it through a different adapter. Use **Edit** to pick the resolution again. For the wallpaper, “Image not found” means the image was moved or deleted.
 
 ### Nothing happens when I press a command’s key
 
