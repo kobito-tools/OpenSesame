@@ -324,6 +324,34 @@ h2 { margin: 0; font-size: 15px; }
   position: absolute; top: 5px; right: 6px; padding: 2px 5px; border-radius: 5px;
   color: var(--accent); background: var(--accent-soft); font: 700 10px/1 inherit;
 }
+.picker-choice:disabled { opacity: .5; cursor: default; }
+.picker-choice:disabled:hover { transform: none; box-shadow: none; border-color: var(--line); }
+.window-tile.selected { border-color: rgba(79, 70, 229, .6); background: var(--accent-soft); box-shadow: inset 0 0 0 1px rgba(79, 70, 229, .35); }
+.mode-tags { color: var(--ink-faint); font-size: 10px; line-height: 1.2; }
+
+/* 解像度の形と大きさ。幅と高さは screenActions.ts が比から決める。 */
+.mode-diagram {
+  display: block; box-sizing: border-box; min-width: 8px; min-height: 8px;
+  border: 2px solid rgba(255, 255, 255, .9); border-radius: 3px; background: rgba(255, 255, 255, .28);
+}
+/* 壁紙の表示の仕方。枠が画面、白が画像、丸が画像の中の形（引き伸ばすと楕円になる）。 */
+.fit-diagram {
+  position: relative; display: block; width: 34px; height: 24px;
+  border: 2px solid rgba(255, 255, 255, .9); border-radius: 4px; overflow: hidden;
+  background: rgba(15, 23, 42, .35);
+}
+.fit-diagram::after { content: ""; position: absolute; background: rgba(255, 255, 255, .95); }
+.fit-diagram::before {
+  content: ""; position: absolute; z-index: 1; left: 50%; top: 50%;
+  width: 9px; height: 9px; border-radius: 50%; background: #4f46e5; transform: translate(-50%, -50%);
+}
+.fit-diagram[data-fit="fill"]::after { inset: -25% 0; }
+.fit-diagram[data-fit="fit"]::after { inset: 0 24%; }
+.fit-diagram[data-fit="fit"]::before { width: 7px; height: 7px; }
+.fit-diagram[data-fit="stretch"]::after { inset: 0; }
+.fit-diagram[data-fit="stretch"]::before { width: 16px; height: 7px; }
+.fit-diagram[data-fit="center"]::after { inset: 25% 32%; }
+.fit-diagram[data-fit="center"]::before { width: 4px; height: 4px; }
 .window-grid-empty { grid-column: 1 / -1; margin: 0; padding: 14px; color: var(--ink-faint); font-size: 12px; text-align: center; }
 .unassigned-group > .window-browser { padding: 4px 12px 12px; }
 .picker-footer { display: flex; justify-content: flex-end; gap: 8px; }
@@ -631,6 +659,7 @@ button.keyboard-key { cursor: pointer; }
   .window-tile { background: rgba(255, 255, 255, .05); }
   .popup-body .window-diagram::before { color: rgba(165, 180, 252, .95); }
   .picker-choice, .picker-tile { background: rgba(255, 255, 255, .05); }
+  .window-tile.selected { border-color: rgba(165, 180, 252, .6); background: rgba(129, 140, 248, .18); }
   .picker-choice:hover, .picker-tile:hover {
     border-color: rgba(165, 180, 252, .5); background: rgba(255, 255, 255, .1); box-shadow: 0 8px 20px rgba(0, 0, 0, .35);
   }
