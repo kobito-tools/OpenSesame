@@ -1,16 +1,16 @@
 {
-  "commit": "082f26c49200e1cc4ae1bbe0c7a4f337cd0a12bd",
-  "copied": "2026-10-24T18:17:48Z",
+  "commit": "00a349940fd3cfb0a53efc22cc83d9c75dd8197d",
+  "copied": "2026-11-11T13:58:24Z",
   "docs_only": true,
   "files": {
     "APP_INTERFACE.md": "6035560ba94a3a3e27b48efbf79811ea7b5f8b0230065890677822a1f734b8c8",
-    "APP_PACKAGE.md": "e7e4ef993cc85457664a905fdfdc46daefdbf8d648448c7c331e38b46848d578",
+    "APP_PACKAGE.md": "91bb837118c3de7107d2a9fcab5e75a11e913dbfa706506829b1daa1a60bd4c8",
     "BRANCHING.md": "afffb749919bde44d0485a1edb2bdd96fce9af66000cdbeee962cd5a39934bfa",
     "CONTRACTS.md": "b0773799025ff2d0405bdd81f65da6f0debc7542d53a3b97c98748c4146255d0",
-    "KIT.md": "84839bb8fc8c48ca45b47b481d038d70464c22cea49f11e192098b8524f24767",
-    "SETUP.md": "23bc63fe67b5f06b17cd60eb90ed6caa41dfa3c37521a18e290c7f5e3266bd32",
+    "KIT.md": "e425752bbd5a9b8b897d3e62aa31ca58b0a31f9118ce4059c22d37e21a5ddacc",
+    "SETUP.md": "7aa94fc4b9743a87cb11a046b03823969fecf778b3c67ce53d156deec2eb038a",
     "assets/kobito-tools-folder-icon.png": "adcc86b6a76b138904b8989efdd2c2123092eafc1d0178fc85b0275c98afafe9",
     "setup.zsh": "2e27ded4a2174ad26ee346bea7dc8c9ead9cada96da37782aebf150c16174a1c"
   },
-  "kit": "0.6.2"
+  "kit": "0.7.1"
 }

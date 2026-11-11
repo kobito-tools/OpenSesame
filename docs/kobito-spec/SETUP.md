@@ -7,7 +7,7 @@ kobito シリーズの各アプリを、新しい PC で使える状態にする
 | `kobito-app.json` | 各アプリのリポジトリの直下 | 「kobito シリーズのアプリ」と名乗る目印（[APP_PACKAGE.md](APP_PACKAGE.md)） |
 | `launch.py` | Python のアプリのリポジトリの直下 | ただ1つの入口。引数の形は全アプリ同じ（[APP_PACKAGE.md](APP_PACKAGE.md)） |
 | `setup.sh` | 各アプリのリポジトリの直下 | そのアプリを、この PC で使える状態にする |
-| `Setup.command` | 各アプリのリポジトリの直下 | `setup.sh` を Finder からダブルクリックで動かす入口。どのアプリも同じ名前（`<アプリ>-Setup.command` はやめる）。git で実行できる設定（100755） |
+| `Setup.command` | 各アプリのリポジトリの直下（任意） | `setup.sh` を Finder からダブルクリックで動かす補助の入口。macOS のセキュリティ（Gatekeeper）で止められることがあるので、置かなくてよい。置くなら、どのアプリも同じ名前・同じ中身（§3 の終わり）で、git で実行できる設定（100755）。`<アプリ>-Setup.command` はやめる |
 | `setup.zsh` | 共通部品の中（Python のアプリは `<パッケージ>/kobito_kit/setup.zsh`、ネイティブのアプリは `docs/kobito-spec/setup.zsh`） | `setup.sh` の共通の手順。`setup.sh` が読み込む（§3） |
 | `assets/` | `setup.zsh` と同じ階層 | `setup.zsh` が使う画像（アプリケーションフォルダの `kobito-tools` フォルダのアイコン）。写しにも入る |
 | `repos/<アプリID>` | PC 固有領域（`~/Library/Application Support/kobito-tools/repos/`） | `setup.sh` が作る、自分のリポジトリへのシンボリックリンク。workspace はここからもアプリを探す（§1「リポジトリの場所」） |
@@ -15,7 +15,7 @@ kobito シリーズの各アプリを、新しい PC で使える状態にする
 
 アプリの一覧は、どのファイルにも書きません。`install.sh` は、GitHub の topic `kobito-app` が付いたリポジトリと、その `kobito-app.json` から一覧を作ります（[APP_PACKAGE.md §8](APP_PACKAGE.md)）。各アプリの `setup.sh` は、ほかのアプリを名指ししません（[CONTRACTS.md](CONTRACTS.md) の名指ししない規則）。
 
-1つのアプリだけを設定し直すときは、そのアプリのフォルダで `./setup.sh` を動かすか、`Setup.command` をダブルクリックします。
+1つのアプリだけを設定し直すときは、そのアプリのフォルダで `./setup.sh` を動かします。これが基本の入口です。`Setup.command` を置いているアプリは、それをダブルクリックしてもかまいません。
 
 ## 1. setup.sh の決まり
 
@@ -171,4 +171,4 @@ kobito_finish "open \"$app\""
 | `$kobito_kit_here` | `setup.zsh` のあるフォルダ（隣に `assets/` がある） |
 
 - `setup.zsh` は写しなので、直接書き換えません。直すときは kobito-workspace の `kobito_workspace/kit/setup.zsh` を直して写し直します。
-- `Setup.command` は、どのアプリも同じ中身でかまいません（`cd "${0:A:h}" && zsh ./setup.sh "$@"` のあと、Enter を待って閉じる）。
+- `Setup.command` は任意です（macOS のセキュリティで止められることがあるため。入口の基本は `./setup.sh`）。置く場合は、どのアプリも同じ中身にします（`cd "${0:A:h}" && zsh ./setup.sh "$@"` のあと、Enter を待って閉じる）。
