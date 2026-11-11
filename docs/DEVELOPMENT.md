@@ -15,7 +15,6 @@ OpenSesame! の中身の構造、ビルド方法、配布手順をまとめて�
 ├── kobito-app.json            # kobito シリーズの目印（下の「自分の起動情報を書く」）
 ├── kobito/                    # アイコンの元 icon.svg と、その 1024px の書き出し icon-1024.png（シリーズの決まった場所）
 ├── setup.sh                   # 初期設定（macOS）。共通の手順 docs/kobito-spec/setup.zsh を読み込む
-├── Setup.command              # setup.sh を Finder から動かす入口
 ├── build.sh                   # 手元で使う OpenSesame!.app を作る（macOS）
 ├── scripts/make-icons.sh      # kobito/icon.svg から、icon-1024.png と src-tauri/icons/ を作り直す
 ├── index.html                 # 設定画面・ポップアップ共通のエントリ
@@ -69,7 +68,7 @@ npm run tauri dev
 npm run tauri build
 ```
 
-手元で使う `.app` だけを作る場合（macOS）は、`./build.sh` を実行します。`npm ci` と `tauri build --bundles app` を行い、このフォルダ直下に `OpenSesame!.app` を置きます。ソースから使う人向けの入口は `setup.sh` です（道具の確かめ・ビルド・アプリケーションフォルダの `kobito-tools` フォルダへ移すかの確認・起動情報の書き出し・PC 固有領域の `repos/` へのリンク・許可と起動の案内。`--yes`・`--dry-run`・`--help` を受け付けます）。引数の読み方・表示・尋ね方は、シリーズ共通の `docs/kobito-spec/setup.zsh` を読み込んで使います。`Setup.command` は `setup.sh` を Finder からダブルクリックで動かすための入口です。置き先のフォルダの用意（無ければ作ってアイコンを付ける・アイコンの無いフォルダなら止まる）と `repos/` へのリンクは、共通の部品（`kobito_applications_folder`・`kobito_link_repository`）が行います。`/Applications` の直下に残っている古い `.app` には触りません。試すときは `KOBITO_APPLICATIONS_DIR`・`KOBITO_CONFIG_DIR` に一時フォルダを指すと、実際のアプリケーションフォルダと PC 固有領域に触れません。
+手元で使う `.app` だけを作る場合（macOS）は、`./build.sh` を実行します。`npm ci` と `tauri build --bundles app` を行い、このフォルダ直下に `OpenSesame!.app` を置きます。ソースから使う人向けの入口は `setup.sh` です（道具の確かめ・ビルド・アプリケーションフォルダの `kobito-tools` フォルダへ移すかの確認・起動情報の書き出し・PC 固有領域の `repos/` へのリンク・許可と起動の案内。`--yes`・`--dry-run`・`--help` を受け付けます）。引数の読み方・表示・尋ね方は、シリーズ共通の `docs/kobito-spec/setup.zsh` を読み込んで使います。利用者には、ターミナルで `./setup.sh` を動かしてもらいます（Finder からダブルクリックで動かす `.command` の入口は、macOS のセキュリティで止められるため置いていません）。置き先のフォルダの用意（無ければ作ってアイコンを付ける・アイコンの無いフォルダなら止まる）と `repos/` へのリンクは、共通の部品（`kobito_applications_folder`・`kobito_link_repository`）が行います。`/Applications` の直下に残っている古い `.app` には触りません。試すときは `KOBITO_APPLICATIONS_DIR`・`KOBITO_CONFIG_DIR` に一時フォルダを指すと、実際のアプリケーションフォルダと PC 固有領域に触れません。
 
 テスト:
 
@@ -88,28 +87,19 @@ cat "$KOBITO_CONFIG_DIR/apps/opensesame.json"
 
 `npm run build` はフロントエンド（`dist/`）を生成するだけです。アプリ本体はRustバイナリが `dist/` を取り込んでコンパイルされるため、**変更を反映するには `tauri dev` か `tauri build` が必要**です。
 
-## リリース手順
+## 版の上げ方と配布
 
-GitHub Actions（`.github/workflows/release.yml`）が macOS（ユニバーサル版 `.dmg`）と Windows（`-setup.exe` / `.msi`）のインストーラーを作ります。
+配布は「ソースを取ってきて `./setup.sh` を実行する」形だけです。GitHub の Releases でインストーラーは配っていません。
 
-1. `package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`kobito-app.json` の `version` を揃えて上げる（`cargo test` が揃っているかを確かめます）
-2. コミットして `main` に push する
-3. バージョンのタグを付けて push する
-
-   ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
-
-4. Actions の完了後、GitHub の Releases に下書きができるので、内容を確認して「Publish release」を押す
+版を上げるときは、`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`kobito-app.json` の `version` を揃えて上げます（`cargo test` が揃っているかを確かめます）。
 
 `main` への push と Pull Request では `.github/workflows/ci.yml` が両OSでテストとビルドを確認します。
 
+`.github/workflows/release.yml` は、以前の配布方法（`v` から始まるタグの push で macOS・Windows のインストーラーを作り、Releases に下書きを作る）の名残で、今は使っていません。タグを push するとこれが動くので注意してください。
+
 ### コード署名について
 
-macOS版は `bundle.macOS.signingIdentity` に `-` を指定し、ad-hoc 署名しています。Apple Developer Program の証明書と公証（notarization）が無いため、利用者は初回起動時に Gatekeeper の確認を通す必要があります（手順は README に記載）。Windows版も未署名のため、SmartScreen の確認が出ます。
-
-証明書を用意できた場合は、[Tauri の署名ドキュメント](https://v2.tauri.app/distribute/sign/macos/) に従って Actions のシークレットを設定すれば、この手順は不要になります。
+macOS版は `bundle.macOS.signingIdentity` に `-` を指定し、ad-hoc 署名しています。Apple Developer Program の証明書と公証（notarization）はありません。`setup.sh` が手元でビルドしたアプリにはダウンロードしたときに付く隔離の印が無いため、Gatekeeper の確認は出ません。ビルドするたびに署名が変わるので、作り直したあとはアクセシビリティの許可を入れ直す必要があります（README に記載）。
 
 ## アイコン
 

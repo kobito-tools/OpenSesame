@@ -1,5 +1,5 @@
 #!/bin/zsh
-# OpenSesame! を、この Mac で使える状態にする（macOS だけ。Windows はインストーラーを使う）。
+# OpenSesame! を、この Mac で使える状態にする（macOS だけ）。ターミナルで ./setup.sh として動かす。
 # 決まりは docs/kobito-spec/SETUP.md。共通の手順は docs/kobito-spec/setup.zsh にある。
 # 何度動かしても安全。登録した項目・設定には触れず、書くのは起動情報だけ。sudo は使わない。
 
@@ -22,7 +22,7 @@ kobito_steps=(
 kobito_setup "$APP_NAME" "$@"
 # ビルド・起動情報より前に確かめる（あとで止まると、起動情報だけがこのリポジトリに変わって repos/ と食い違う）。
 kobito_check_repository
-# Finder から開いたときにも、Homebrew で入れた Node.js が見つかるようにする（build.sh と同じ）。
+# PATH に入っていなくても、Homebrew の既定の場所に入れた Node.js が見つかるようにする（build.sh と同じ）。
 path=($path /opt/homebrew/bin /usr/local/bin)
 
 # 足りない道具は、--dry-run なら知らせて続ける（何をするかを最後まで見せるため）。

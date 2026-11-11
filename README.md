@@ -29,33 +29,70 @@ Each key can hold two items: one on the main layer and one on the Shift layer.
 ## Requirements
 
 - macOS 11 or later (Apple Silicon or Intel)
+- Installing builds the app on your Mac, so the first install takes several minutes.
 
-## Download and install
+## Install
 
-1. Download `OpenSesame!_x.y.z_universal.dmg` from the [latest release](../../releases/latest). `x.y.z` is the version number.
-2. Open the `.dmg` and drag OpenSesame! into the Applications folder.
-3. Launch OpenSesame! from the Applications folder.
+OpenSesame! is installed by getting its source code and running `setup.sh` in Terminal. The script checks the tools it needs, builds `OpenSesame!.app` on your Mac and puts it in the Applications folder. An app you build yourself does not show the “unidentified developer” warning on first launch.
 
-> **Note:** Launch it from the Applications folder. If you run it from somewhere else, such as Downloads, macOS may not keep the permissions below.
+### 1. Get the source code
 
-You can also build the app yourself from the source code. A self-built app does not show the warning below. See [Build from source](#build-from-source).
+Use either way. Put the folder somewhere you will keep it, such as your home folder. You will use it again to update.
 
-### First launch: the “unidentified developer” warning
+| Way | How |
+|---|---|
+| Git | In Terminal, run `git clone https://github.com/kobito-tools/OpenSesame.git`. This makes an `OpenSesame` folder |
+| ZIP | On this page on GitHub, click **Code → Download ZIP**, then double-click the ZIP to unzip it. This makes an `OpenSesame-main` folder |
 
-OpenSesame! is not notarized by Apple, so the first launch shows a warning such as “cannot verify the developer”. Close the warning, open **System Settings → Privacy & Security**, and click **Open Anyway** near the bottom. After that, it opens normally.
+### 2. Run setup.sh
 
-If macOS says the app “is damaged and can’t be opened”, run this in Terminal and launch it again:
+In Terminal, go to that folder and run `setup.sh`:
 
 ```bash
-xattr -dr com.apple.quarantine "/Applications/OpenSesame!.app"
+cd OpenSesame
+./setup.sh
 ```
+
+For the ZIP, use `cd OpenSesame-main` (or type `cd `, drag the folder onto the Terminal window and press Return).
+
+It asks a few questions as it goes. Press Return to choose the answer shown in capitals.
+
+| Option | What it does |
+|---|---|
+| `./setup.sh --help` | Shows the options and the steps |
+| `./setup.sh --dry-run` | Shows what it would do, without changing anything |
+| `./setup.sh --yes` | Uses the default answer for every question (the app is then not moved to Applications) |
+
+It is safe to run more than once.
+
+### 3. What setup.sh does
+
+| Step | What happens |
+|---|---|
+| Check tools | Checks for the Xcode Command Line Tools and Node.js 20 or later. If one is missing, it shows how to install it (`xcode-select --install`, or Node.js from [nodejs.org](https://nodejs.org/) or `brew install node`) and stops. Install it and run `./setup.sh` again |
+| Rust | If Rust is missing, it asks whether to install it with the official installer ([rustup](https://rustup.rs/)) |
+| Build | Builds `OpenSesame!.app` in the source folder. This takes a few minutes |
+| Move to Applications | Asks whether to move the app to the `kobito-tools` folder in Applications (`/Applications/kobito-tools/`). Answer **y**. If the folder does not exist, it is created with the series icon. If OpenSesame! is already there, it asks before replacing it |
+| Launch info | Writes a small file that tells other apps in the series how to launch OpenSesame! (see [Working with other apps](#working-with-other-apps)) |
+| Remember the folder | Records where the source folder is, as a link at `~/Library/Application Support/kobito-tools/repos/opensesame` |
+| Permissions | Shows how to allow Accessibility, and the command to start the app |
+
+If you answer **n** to moving the app, `OpenSesame!.app` stays in the source folder. It still works, but macOS keeps the permissions more reliably when the app is in the Applications folder. You can move it yourself later.
+
+An older `OpenSesame!.app` directly in `/Applications` is left alone. If you no longer use it, move it to the Trash.
+
+### 4. Start OpenSesame!
+
+Open the `kobito-tools` folder in Applications and double-click OpenSesame!. You can also run the `open` command shown at the end of `setup.sh`.
+
+> **Note:** Start it from the Applications folder. If you start it from somewhere else, macOS may not keep the permissions below.
 
 ### Allow Accessibility
 
 OpenSesame! needs Accessibility permission to notice your key presses while you are using other apps. On first launch, the settings window shows a guide.
 
 1. Click **Open Accessibility settings** in the guide.
-2. Click **+** below the list and add OpenSesame! from the Applications folder.
+2. Click **+** below the list and add OpenSesame! from the `kobito-tools` folder in Applications.
 3. Turn on the switch next to OpenSesame!.
 
 Within a few seconds the guide disappears and OpenSesame! starts listening. You do not need to restart it.
@@ -67,6 +104,17 @@ The first time you use a window layout, macOS asks whether “OpenSesame!” may
 ### Switch the settings window to English
 
 The settings window starts in Japanese. Use the language menu at the top right to choose **English**. The menu bar items follow the language the next time OpenSesame! starts.
+
+## Update
+
+Your settings and registered items are kept when you update.
+
+1. Quit OpenSesame! (menu bar icon → **Quit OpenSesame!**). `setup.sh` does not replace an app that is running.
+2. Get the new source code.
+   - Git: in the source folder, run `git pull`.
+   - ZIP: move the old `OpenSesame-main` folder to the Trash, then download and unzip the ZIP again.
+3. Run `./setup.sh` again and answer **y** to moving and replacing the app.
+4. In **System Settings → Privacy & Security → Accessibility**, select OpenSesame!, remove it with **−**, and add it again. Each build has a new signature, so the old permission no longer applies.
 
 ## How to use
 
@@ -155,8 +203,6 @@ Choose **Change the wallpaper** for a key.
 - If the image has been moved or deleted, or the chosen display is not connected, nothing changes and the settings window opens to tell you.
 - Use **Edit** in the list to change the image, display or fit.
 
-Changing the resolution and the wallpaper is available on macOS only.
-
 ### Use the Shift layer
 
 Switch the keyboard at the top right to **Shift layer** to assign a second set of items. The same key can hold one item on the main layer and another on the Shift layer. To run a Shift-layer item, hold Shift as well as the activation keys.
@@ -195,6 +241,13 @@ Click the OpenSesame! icon in the menu bar and choose **Quit OpenSesame!**.
 
 Open **System Settings → Privacy & Security → Automation** and make sure “System Events” is turned on under OpenSesame!.
 
+### setup.sh stops with “A repository with the same app ID exists in another location”
+
+Another copy of the OpenSesame! source folder is already recorded on this Mac, for example from an earlier clone or ZIP. `setup.sh` stops without changing anything rather than picking one. Decide which folder to keep:
+
+- To keep the recorded one, stop using the new folder and move it to the Trash.
+- To use the new one, move the old folder to the Trash (or run the `rm` command `setup.sh` shows to remove only the record), then run `./setup.sh` again.
+
 ### “Target not found” appears and settings cannot be saved
 
 A registered app or folder was moved or deleted, or it is on an external drive that is not connected. Remove the item from the list, or connect the drive.
@@ -219,17 +272,22 @@ If the config file was damaged, OpenSesame! keeps the original as `config.json.b
 
 ## Uninstall
 
-1. Quit OpenSesame!.
-2. Move OpenSesame! from the Applications folder to the Trash. If you installed it with `setup.sh`, it is inside the `kobito-tools` folder.
-3. In **System Settings → Privacy & Security → Accessibility**, select OpenSesame! and remove it with **−**.
+1. If **Open at login** is **On**, set it to **Off** in the settings window.
+2. Quit OpenSesame!.
+3. Move OpenSesame! from the `kobito-tools` folder in Applications to the Trash. If you did not move it there during setup, it is in the source folder. Leave the `kobito-tools` folder itself if it holds other apps.
+4. In **System Settings → Privacy & Security → Accessibility**, select OpenSesame! and remove it with **−**.
+5. If you no longer need the source folder, move it to the Trash as well.
 
 To remove your settings as well, delete this folder:
 
 - `~/Library/Application Support/io.github.kobito-tools.opensesame`
 
-To also remove the launch info file (see [Working with other apps](#working-with-other-apps)), delete this file:
+To also remove what `setup.sh` recorded, delete these:
 
-- `~/Library/Application Support/kobito-tools/apps/opensesame.json`
+| What | Where |
+|---|---|
+| Launch info file (see [Working with other apps](#working-with-other-apps)) | `~/Library/Application Support/kobito-tools/apps/opensesame.json` |
+| Link to the source folder | `~/Library/Application Support/kobito-tools/repos/opensesame` |
 
 ## Privacy
 
@@ -239,19 +297,9 @@ OpenSesame! does not use the network. Key presses are used only to detect the ac
 
 ### Build from source
 
-To install without the warning on first launch, clone this repository and run `./setup.sh` in Terminal (or double-click `Setup.command` in Finder). An app you build yourself has no quarantine flag from a download, so the warning does not appear.
+`setup.sh` builds the app with `build.sh`, which runs `npm ci` and `tauri build --bundles app` and puts `OpenSesame!.app` in the repository folder. Both scripts are for macOS. The steps `setup.sh` shares with the rest of the series are in `docs/kobito-spec/setup.zsh`.
 
-- You need Xcode Command Line Tools, Node.js 20 or later, and Rust.
-  - If Rust is missing, it asks whether to install it with the official installer (rustup).
-  - If Xcode Command Line Tools or Node.js is missing, it shows how to install them and stops.
-- After the build, it asks whether to move `OpenSesame!.app` into the `kobito-tools` folder in Applications (`/Applications/kobito-tools/`). If the folder does not exist, it creates it and gives it the series icon. If `OpenSesame!.app` is already there, it asks before replacing it. You can say no and still use the app: `OpenSesame!.app` stays in the repository folder, and you can move it yourself.
-- An older `OpenSesame!.app` directly in `/Applications` is left alone. If you no longer use it, move it to the Trash yourself.
-- At the end, it writes the launch info using the installed `OpenSesame!.app` (see [Working with other apps](#working-with-other-apps)). It does not open a window or stop a running OpenSesame!. It also records the repository location as a symbolic link at `kobito-tools/repos/opensesame` under `~/Library/Application Support/`.
-- If another OpenSesame! repository (with the same app ID) is already recorded there, it stops before building and changes nothing. Decide which one to use and follow the instructions it shows.
-- `./setup.sh --help` shows the options, and `./setup.sh --dry-run` shows what it would do without changing anything. It is safe to run more than once.
-- After a rebuild, remove OpenSesame! from the Accessibility list with **−** and add it again. Each build has a new signature, so the old permission no longer applies.
-
-For build details and the source layout, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (in Japanese).
+For running in development mode (`npm run tauri dev`), tests, the source layout, and how to try `setup.sh` without touching your real Applications folder (`KOBITO_APPLICATIONS_DIR`, `KOBITO_CONFIG_DIR`), see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (in Japanese).
 
 ### Working with other apps
 
