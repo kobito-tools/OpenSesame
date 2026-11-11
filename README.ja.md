@@ -73,7 +73,7 @@ ZIP の場合は `cd OpenSesame-main` です（`cd ` と打ってから、フォ
 | Rust | Rust が無いときは、公式の手順（[rustup](https://rustup.rs/)）で入れるかを尋ねます |
 | ビルド | ソースのフォルダの中に `OpenSesame!.app` を作ります。数分かかります |
 | アプリケーションフォルダへ移す | アプリケーションフォルダの `kobito-tools` フォルダ（`/Applications/kobito-tools/`）へ移すかを尋ねます。**y** と答えてください。フォルダが無ければ作り、シリーズのアイコンを付けます。すでに OpenSesame! がある場合は、置き換えてよいかを尋ねます |
-| 起動情報 | シリーズのほかのアプリが OpenSesame! を起動するための小さなファイルを書き出します（「[ほかのアプリとのつながり](#ほかのアプリとのつながり)」） |
+| 起動情報 | シリーズのほかのアプリが OpenSesame! を起動するための小さなファイルを書き出します |
 | フォルダの場所を記す | ソースのフォルダの場所を、`~/Library/Application Support/kobito-tools/repos/opensesame` にリンクとして記します |
 | 許可の案内 | アクセシビリティの許可のしかたと、起動するコマンドを表示します |
 
@@ -282,43 +282,15 @@ Control、Option、Command、Shift のうち最大 3 つまで組み合わせる
 
 | もの | 場所 |
 |---|---|
-| 起動情報のファイル（「[ほかのアプリとのつながり](#ほかのアプリとのつながり)」） | `~/Library/Application Support/kobito-tools/apps/opensesame.json` |
+| 起動情報のファイル | `~/Library/Application Support/kobito-tools/apps/opensesame.json` |
 | ソースのフォルダへのリンク | `~/Library/Application Support/kobito-tools/repos/opensesame` |
 
 ## プライバシー
 
 OpenSesame! はネットワーク通信を行いません。キー入力は、起動キーと割り当てキーの判定にのみ使用し、記録や外部への送信は行いません。設定はお使いの Mac の中にのみ保存されます。
 
-## 開発者向け
-
-### ソースから作る
-
-`setup.sh` は `build.sh` でアプリを作ります。`build.sh` は `npm ci` と `tauri build --bundles app` を行い、リポジトリのフォルダ直下に `OpenSesame!.app` を置きます。どちらも macOS 用です。`setup.sh` のうちシリーズ共通の手順は `docs/kobito-spec/setup.zsh` にあります。
-
-開発モードでの起動（`npm run tauri dev`）、テスト、ソースコードの構成、実際のアプリケーションフォルダに触れずに `setup.sh` を試す方法（`KOBITO_APPLICATIONS_DIR`・`KOBITO_CONFIG_DIR`）は、[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) を参照してください。
-
-### ほかのアプリとのつながり
-
-OpenSesame! は、ほかのアプリとは、約束（`docs/kobito-spec/CONTRACTS.md`）のデータの形だけでつながります。
-
-OpenSesame! は、起動するたびに、自分の起動のしかたと見せ方（名前・色・アイコン）を「起動情報」として Mac の中に書き出します。シリーズのほかのアプリは、これを読んで OpenSesame! を起動ボタンとして並べます。OpenSesame! はユーティリティなので、ほかのアプリの中には表示しません。
-
-- 置き場所：`~/Library/Application Support/kobito-tools/apps/opensesame.json`
-- 画面を開かずに書き出すだけのときは、`OpenSesame!.app/Contents/MacOS/OpenSesame --write-launch-info` を実行します。書き出してすぐ終わります。
-- 書き出すのは起動のしかたと見せ方だけで、設定や登録した項目は書きません。
-- 書き出さずに、同じ内容を画面（標準出力）に出すだけのときは `--metadata` を付けます。
-- リポジトリの直下の `kobito-app.json` は、kobito シリーズのアプリであることを示す目印で、`kobito/` にアイコン（`icon.svg`・`icon-1024.png`）を置いています（アプリの形で配るので `"kind": "native"`。決まりは `docs/kobito-spec/APP_PACKAGE.md`）。
-
-### 不具合の報告
+## 不具合の報告とライセンス
 
 不具合の報告や要望は [Issues](../../issues) で受け付けています。
 
-### 開発について
-
-本ソフトウェアの開発には、ChatGPT（OpenAI）および Claude（Anthropic）を使用しています。本プロジェクトは個人によるものであり、OpenAI および Anthropic とは関係ありません。
-
-### ライセンス
-
 本ソフトウェアは [MIT License](LICENSE) のもとで提供されています。
-
-本ソフトウェアは現状のまま提供され、いかなる保証もありません。本ソフトウェアの使用によって生じたいかなる損害についても、作者は責任を負いません。詳細は [LICENSE](LICENSE) を参照してください。
