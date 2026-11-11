@@ -73,7 +73,7 @@ It is safe to run more than once.
 | Rust | If Rust is missing, it asks whether to install it with the official installer ([rustup](https://rustup.rs/)) |
 | Build | Builds `OpenSesame!.app` in the source folder. This takes a few minutes |
 | Move to Applications | Asks whether to move the app to the `kobito-tools` folder in Applications (`/Applications/kobito-tools/`). Answer **y**. If the folder does not exist, it is created with the series icon. If OpenSesame! is already there, it asks before replacing it |
-| Launch info | Writes a small file that tells other apps in the series how to launch OpenSesame! (see [Working with other apps](#working-with-other-apps)) |
+| Launch info | Writes a small file that tells other apps in the series how to launch OpenSesame! |
 | Remember the folder | Records where the source folder is, as a link at `~/Library/Application Support/kobito-tools/repos/opensesame` |
 | Permissions | Shows how to allow Accessibility, and the command to start the app |
 
@@ -286,43 +286,15 @@ To also remove what `setup.sh` recorded, delete these:
 
 | What | Where |
 |---|---|
-| Launch info file (see [Working with other apps](#working-with-other-apps)) | `~/Library/Application Support/kobito-tools/apps/opensesame.json` |
+| Launch info file | `~/Library/Application Support/kobito-tools/apps/opensesame.json` |
 | Link to the source folder | `~/Library/Application Support/kobito-tools/repos/opensesame` |
 
 ## Privacy
 
 OpenSesame! does not use the network. Key presses are used only to detect the activation keys and the assigned keys. They are never recorded or sent anywhere. Your settings are stored only on your Mac.
 
-## For developers
-
-### Build from source
-
-`setup.sh` builds the app with `build.sh`, which runs `npm ci` and `tauri build --bundles app` and puts `OpenSesame!.app` in the repository folder. Both scripts are for macOS. The steps `setup.sh` shares with the rest of the series are in `docs/kobito-spec/setup.zsh`.
-
-For running in development mode (`npm run tauri dev`), tests, the source layout, and how to try `setup.sh` without touching your real Applications folder (`KOBITO_APPLICATIONS_DIR`, `KOBITO_CONFIG_DIR`), see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (in Japanese).
-
-### Working with other apps
-
-OpenSesame! connects to other apps only through the data formats defined in `docs/kobito-spec/CONTRACTS.md`.
-
-Each time it starts, OpenSesame! writes how to launch it and how to show it (name, color and icon) as “launch info” on your Mac. Other apps in the series read this file to show OpenSesame! as a launch button. OpenSesame! is a utility, so it does not show up inside other apps.
-
-- Location: `~/Library/Application Support/kobito-tools/apps/opensesame.json`
-- To write the file without opening a window, run `OpenSesame!.app/Contents/MacOS/OpenSesame --write-launch-info`. It writes the file and exits.
-- Only how to launch and show the app is written. Your settings and registered items are not.
-- To print the same content to standard output without writing the file, use `--metadata`.
-- `kobito-app.json` at the repository root marks this as a kobito-tools app. The icons (`icon.svg`, `icon-1024.png`) are in `kobito/`. It is shipped as an app, so its kind is `"native"` (see `docs/kobito-spec/APP_PACKAGE.md`).
-
-### Issues
+## Feedback and license
 
 Bug reports and requests are welcome in [Issues](../../issues).
 
-### How this was made
-
-OpenSesame! was developed with the help of ChatGPT (OpenAI) and Claude (Anthropic). This is a personal project and is not affiliated with OpenAI or Anthropic.
-
-### License
-
 OpenSesame! is released under the [MIT License](LICENSE).
-
-The software is provided “as is”, without warranty of any kind. The author is not liable for any damage arising from its use. See [LICENSE](LICENSE) for details.
