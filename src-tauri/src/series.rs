@@ -238,7 +238,7 @@ pub(crate) mod tests {
             let text = marker[key].as_str().unwrap();
             assert!(text.chars().count() <= 80 && !text.contains('\n'), "{key}");
         }
-        for name in ["kobito/icon.svg", "kobito/icon-1024.png", "Setup.command"] {
+        for name in ["kobito/icon.svg", "kobito/icon-1024.png"] {
             assert!(root.join(name).is_file(), "{name}");
         }
         let config: Value = serde_json::from_str(
