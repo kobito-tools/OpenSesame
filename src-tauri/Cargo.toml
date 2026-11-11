@@ -1,6 +1,6 @@
 [package]
 name = "opensesame"
-version = "0.2.0"
+version = "1.0.0"
 description = "Hold a key and open anything: apps, folders, websites, commands and window layouts"
 authors = ["ta-nish18"]
 license = "MIT"
@@ -26,8 +26,7 @@ file_icon_provider = "1.0.2"
 # Webサイトを登録したとき、そのサイトのアイコンを取りに行く。
 ureq = "2"
 url = "2"
-# シリーズの操作の URL の {today} を、この PC の今日の日付にする。
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tauri-plugin-autostart = "=2.5.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # ポップアップを透過ウィンドウのままにすると、backdrop-filterはデスクトップを
@@ -35,9 +34,9 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 window-vibrancy = "0.6"
 # フルスクリーンのSpaceにもポップアップを出すため、NSWindowの挙動を直接設定する。
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSResponder", "NSWindow", "NSRunningApplication", "NSWorkspace"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "libc", "NSResponder", "NSApplication", "NSWindow", "NSRunningApplication", "NSScreen", "NSWorkspace", "NSGraphics"] }
 # 新しい版を起動したとき、動いている旧版を探して終了させる。
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSString", "NSURL"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSBundle", "NSDictionary", "NSError", "NSGeometry", "NSObject", "NSString", "NSURL", "NSValue"] }
 
 # macOSでは自前のCGEventTapを使う。rdevはキー押下のたびにメインスレッド必須の
 # Text Services Managerを呼ぶため、バックグラウンドのフックでは必ずクラッシュする。

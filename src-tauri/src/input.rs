@@ -116,15 +116,36 @@ impl Machine {
             return Verdict::Swallow;
         }
 
-        if let Some(item) = find_item(&self.config, key, back) {
+        if let Some((item, problem)) = find_item(&self.config, key, back) {
             self.consumed.insert(key.to_string());
             if first_press {
-                launch(self.app.clone(), item);
+                match problem {
+                    None => launch(self.app.clone(), item),
+                    Some(_) => refuse(self.app.clone(), item),
+                }
             }
             return Verdict::Swallow;
         }
 
         Verdict::Pass
+    }
+
+    /// 離したことを取りこぼしたキーを、押したままの記録から外す。
+    /// タップが一時的に切られたときやセキュア入力の最中は離したイベントが届かず、
+    /// 起動キーが押されたままと見なされて、次に押してもパネルが出なくなる。
+    pub fn forget_released(&mut self, still_down: impl Fn(&str) -> bool) {
+        if !prune_released(&mut self.pressed, &mut self.consumed, still_down) {
+            return;
+        }
+        let activation = match self.activation.read() {
+            Ok(keys) => keys.clone(),
+            Err(_) => return,
+        };
+        if self.armed && !activation_is_down(&self.pressed, &activation) {
+            self.armed = false;
+            let _ = self.popup.send(PopupCommand::Hide);
+            self.sync_layer(false);
+        }
     }
 
     pub fn on_release(&mut self, key: &str) -> Verdict {
@@ -329,22 +350,47 @@ fn layer_shift_down(pressed: &HashSet<String>, activation: &HashSet<String>) -> 
         .any(|key| pressed.contains(*key) && !activation.contains(*key))
 }
 
+/// もう押されていないキーを外す。何か外したら真。
+/// 飲み込み予定のキーも外さないと、次にふつうに押したとき離す側だけが飲まれて
+/// 元のアプリでキーが押しっぱなしになる。
+fn prune_released(
+    pressed: &mut HashSet<String>,
+    consumed: &mut HashSet<String>,
+    still_down: impl Fn(&str) -> bool,
+) -> bool {
+    let before = pressed.len() + consumed.len();
+    pressed.retain(|key| still_down(key));
+    consumed.retain(|key| pressed.contains(key));
+    pressed.len() + consumed.len() != before
+}
+
 fn activation_is_down(pressed: &HashSet<String>, activation: &HashSet<String>) -> bool {
     !activation.is_empty() && activation.iter().all(|key| pressed.contains(key))
 }
 
+/// 押したキーの項目と、動かす直前に確かめた検査の結果（通らなければその理由）。
 fn find_item(
     config: &Arc<RwLock<LauncherConfig>>,
     pressed_name: &str,
     shift: bool,
-) -> Option<LauncherItem> {
-    config
-        .read()
-        .ok()?
+) -> Option<(LauncherItem, Option<String>)> {
+    let config = config.read().ok()?;
+    let item = config
         .items
         .iter()
         .find(|item| item.shift == shift && key_matches(&item.key, pressed_name))
-        .cloned()
+        .cloned()?;
+    let problem = crate::item_problem(&config, &item.id);
+    Some((item, problem))
+}
+
+/// 設定ファイルがアプリの外で書き換えられ、検査を通らない中身になった項目は動かさない。
+/// 押したことは知らせ欄に出し、直せるよう設定画面を開いて見せる。
+fn refuse(app: AppHandle, item: LauncherItem) {
+    thread::spawn(move || {
+        let _ = app.emit("launch-failed", error("item-blocked", &item.name));
+        show_settings(&app);
+    });
 }
 
 fn find_window_action(
@@ -368,6 +414,25 @@ fn find_window_action(
 }
 
 fn launch(app: AppHandle, item: LauncherItem) {
+    // 解像度と壁紙は、できなかったこと（画面が無い・画像が無いなど）を知らせ欄に出し、何も変えない。
+    if matches!(item.target_type, TargetType::Display | TargetType::Wallpaper) {
+        thread::spawn(move || {
+            let result = match (&item.target_type, &item.display, &item.wallpaper) {
+                (TargetType::Display, Some(setting), _) => crate::display::apply(&app, setting),
+                (TargetType::Display, None, _) => Err(error("invalid-display-setting", "")),
+                (_, _, setting) => crate::wallpaper::apply(
+                    &app,
+                    &item.target.value,
+                    &setting.clone().unwrap_or_default(),
+                ),
+            };
+            if let Err(message) = result {
+                let _ = app.emit("launch-failed", message);
+                show_settings(&app);
+            }
+        });
+        return;
+    }
     if matches!(item.target_type, TargetType::Command) {
         // 起動できなかったことは設定画面の知らせ欄に出す。ふだんは閉じているので開いて見せる。
         crate::command::launch(
@@ -380,10 +445,6 @@ fn launch(app: AppHandle, item: LauncherItem) {
         );
         return;
     }
-    if matches!(item.target_type, TargetType::KobitoAction) {
-        launch_series_action(app, &item);
-        return;
-    }
     thread::spawn(move || {
         let toggles = item.hide_when_frontmost
             && matches!(item.target_type, TargetType::Application);
@@ -392,28 +453,6 @@ fn launch(app: AppHandle, item: LauncherItem) {
         }
         let _ = open::that(item.target.value);
     });
-}
-
-/// 押された時点の起動情報を読み直し、`{today}` を置き換えた URL を、起動のコマンドの
-/// 後ろに足してシェルを通さずに動かす（④の決まり）。ほかのアプリの中に表示されているアプリへは届けず、
-/// アプリの単体のウインドウで開く。見つからない・すぐに失敗したときは、コマンドと同じく知らせる。
-fn launch_series_action(app: AppHandle, item: &LauncherItem) {
-    let notify = move |message: String| {
-        let _ = app.emit("launch-failed", message);
-        show_settings(&app);
-    };
-    let (Some(app_id), Some(action)) = (item.target.app.as_deref(), item.target.action.as_deref())
-    else {
-        notify(error("series-app-missing", ""));
-        return;
-    };
-    match crate::series::resolve_action(app_id, action, &crate::series::today()) {
-        Ok((mut program, url)) => {
-            program.push(url);
-            crate::command::launch_program(&program, notify);
-        }
-        Err(message) => notify(message),
-    }
 }
 
 fn show_popup(app: &AppHandle) {
@@ -435,8 +474,13 @@ fn show_popup(app: &AppHandle) {
     }
     // フルスクリーンのSpaceへ移るたびに効くよう、表示の直前に毎回設定し直す。
     #[cfg(target_os = "macos")]
-    crate::float_popup_over_fullscreen(&window);
+    {
+        crate::before_popup_shown();
+        crate::float_popup_over_fullscreen(&window);
+    }
     let _ = window.show();
+    #[cfg(target_os = "macos")]
+    crate::bring_popup_to_front(&window);
     // 表示のたびにキーを浮き上がらせるので、画面側へ再生の合図を送る。
     let _ = app.emit_to("popup", "popup-shown", ());
 }
@@ -445,6 +489,8 @@ fn hide_popup(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("popup") {
         let _ = window.hide();
     }
+    #[cfg(target_os = "macos")]
+    crate::after_popup_hidden(app);
 }
 
 fn show_settings(app: &AppHandle) {
@@ -481,6 +527,22 @@ mod tests {
         assert!(layer_shift_down(&pressed, &activation));
         let plain = keys(&["ControlLeft", "AltLeft"]);
         assert!(layer_shift_down(&keys(&["ControlLeft", "AltLeft", "ShiftLeft"]), &plain));
+    }
+
+    #[test]
+    fn released_keys_are_forgotten() {
+        let activation = keys(&["ControlLeft", "AltLeft"]);
+        // AltLeftを離したイベントを取りこぼした状態。
+        let mut pressed = keys(&["ControlLeft", "AltLeft", "KeyA"]);
+        let mut consumed = keys(&["KeyA"]);
+        let changed = prune_released(&mut pressed, &mut consumed, |key| key == "ControlLeft");
+        assert!(changed);
+        assert_eq!(pressed, keys(&["ControlLeft"]));
+        assert!(consumed.is_empty());
+        assert!(!activation_is_down(&pressed, &activation));
+
+        let mut consumed = HashSet::new();
+        assert!(!prune_released(&mut pressed, &mut consumed, |_| true));
     }
 
     #[test]

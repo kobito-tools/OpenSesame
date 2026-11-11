@@ -1,4 +1,6 @@
+mod autostart;
 mod command;
+mod display;
 mod favicon;
 mod frontmost;
 mod icons;
@@ -10,15 +12,17 @@ mod series;
 mod storage;
 #[cfg(target_os = "macos")]
 mod tap_macos;
+mod wallpaper;
 mod window_layout;
 
 use icons::{cache_system_icon, copy_custom_icon};
 use input::{ActivationKeys, InputError};
 use keys::{normalize_modifier, ASSIGNABLE_KEYS};
 use model::{
-    LauncherConfig, LauncherItem, RuntimeInfo, TargetIcon, TargetPath, TargetType, KEYBOARD_LAYOUTS,
-    LANGUAGES,
+    DisplaySetting, LauncherConfig, LauncherItem, RuntimeInfo, TargetIcon, TargetPath, TargetType,
+    WallpaperSetting, KEYBOARD_LAYOUTS, LANGUAGES, WALLPAPER_FITS,
 };
+use serde::Serialize;
 use std::{
     collections::HashSet,
     fs,
@@ -46,6 +50,16 @@ fn get_config(state: State<'_, AppState>) -> Result<LauncherConfig, String> {
         .config
         .read()
         .map(|config| config.clone())
+        .map_err(|_| "設定のロックを取得できません".to_string())
+}
+
+/// 今の設定のうち、保存時の検査を通らないもの。知らせ欄に出し、キーを押しても動かさない。
+#[tauri::command]
+fn get_config_problems(state: State<'_, AppState>) -> Result<Vec<ConfigProblem>, String> {
+    state
+        .config
+        .read()
+        .map(|config| config_problems(&config))
         .map_err(|_| "設定のロックを取得できません".to_string())
 }
 
@@ -142,6 +156,8 @@ async fn select_target(
             value: cached,
         },
         hide_when_frontmost: false,
+        display: None,
+        wallpaper: None,
     }))
 }
 
@@ -187,6 +203,8 @@ async fn create_website(
             value: icon,
         },
         hide_when_frontmost: false,
+        display: None,
+        wallpaper: None,
     })
 }
 
@@ -237,48 +255,20 @@ fn create_command(
             value: None,
         },
         hide_when_frontmost: false,
+        display: None,
+        wallpaper: None,
     })
 }
 
-/// シリーズのほかのアプリが起動情報（④）に名乗った操作を、アプリごとに返す。
-/// 操作を名乗っていないアプリは出さない。
+/// 解像度の切り替えを登録項目にする。表示名は設定画面が言語に合わせて作って渡す。
 #[tauri::command]
-fn list_series_actions() -> Vec<series::SeriesApp> {
-    series::read_all()
-        .into_iter()
-        .filter(|app| !app.actions.is_empty())
-        .collect()
-}
-
-/// シリーズの操作を割り当てる項目を組み立てる。設定に覚えるのはアプリIDと操作の `id` だけで、
-/// URL や起動コマンドは覚えない。表示名は「アプリ名 › 操作の名前」（あとから変えられる）。
-#[tauri::command]
-fn create_series_action(
-    app: String,
-    action: String,
+fn create_display_item(
+    setting: DisplaySetting,
+    name: String,
     key: Option<String>,
     shift: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<LauncherItem, String> {
-    let record = series::read_app(&app).ok_or_else(|| error("series-app-missing", &app))?;
-    let found = record
-        .actions
-        .iter()
-        .find(|candidate| candidate.id == action)
-        .ok_or_else(|| error("series-action-missing", &format!("{} › {action}", record.name)))?;
-    let english = state
-        .config
-        .read()
-        .map(|config| config.language == "en")
-        .unwrap_or(false);
-    let (app_name, action_label) = if english {
-        (
-            record.name_en.as_deref().unwrap_or(&record.name),
-            found.label_en.as_deref().unwrap_or(&found.label),
-        )
-    } else {
-        (record.name.as_str(), found.label.as_str())
-    };
     let shift = shift.unwrap_or(false);
     let key = match key {
         Some(requested) => {
@@ -287,33 +277,98 @@ fn create_series_action(
         }
         None => next_available_key(&state.config, shift)?,
     };
-    let id = Uuid::new_v4().to_string();
-    // アプリが名乗ったアイコンを、ほかの登録項目と同じ場所へ写す（画面は自分のデータ領域の画像しか出せない）。
-    // 写せなければ（SVG など）名前の1文字目を出す。
-    let icon = record.icon_file.as_ref().and_then(|source| {
-        let destination = state.data_dir.join("icons/system").join(format!("{id}.png"));
-        copy_custom_icon(source, &destination)
-            .ok()
-            .map(|_| destination.to_string_lossy().into_owned())
-    });
-    Ok(LauncherItem {
-        id,
-        target_type: TargetType::KobitoAction,
-        name: format!("{app_name} › {action_label}"),
+    let item = LauncherItem {
+        id: Uuid::new_v4().to_string(),
+        target_type: TargetType::Display,
+        name: name.trim().to_string(),
         key,
         shift,
         target: TargetPath {
-            kind: "kobito-action".into(),
-            app: Some(record.app.clone()),
-            action: Some(found.id.clone()),
+            kind: "display".into(),
+            value: setting.screen.name.clone(),
             ..Default::default()
         },
         icon: TargetIcon {
             kind: "system".into(),
-            value: icon,
+            value: None,
         },
         hide_when_frontmost: false,
-    })
+        display: Some(setting),
+        wallpaper: None,
+    };
+    check_item(&item)?;
+    Ok(item)
+}
+
+/// 壁紙の切り替えを登録項目にする。表示名を省略したときは画像のファイル名を使う。
+#[tauri::command]
+fn create_wallpaper(
+    path: String,
+    setting: WallpaperSetting,
+    name: Option<String>,
+    key: Option<String>,
+    shift: Option<bool>,
+    state: State<'_, AppState>,
+) -> Result<LauncherItem, String> {
+    let path = path.trim().to_string();
+    if !Path::new(&path).is_absolute() {
+        return Err(error("invalid-path", &path));
+    }
+    wallpaper::check_image(&path)?;
+    let name = name
+        .map(|name| name.trim().to_string())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| display_name(Path::new(&path)));
+    let shift = shift.unwrap_or(false);
+    let key = match key {
+        Some(requested) => {
+            validate_key(&requested)?;
+            requested
+        }
+        None => next_available_key(&state.config, shift)?,
+    };
+    let item = LauncherItem {
+        id: Uuid::new_v4().to_string(),
+        target_type: TargetType::Wallpaper,
+        name,
+        key,
+        shift,
+        target: TargetPath {
+            kind: "path".into(),
+            value: path,
+            ..Default::default()
+        },
+        icon: TargetIcon {
+            kind: "system".into(),
+            value: None,
+        },
+        hide_when_frontmost: false,
+        display: None,
+        wallpaper: Some(setting),
+    };
+    check_item(&item)?;
+    Ok(item)
+}
+
+/// つながっている画面と、それぞれの表示モードの一覧。読むだけで何も変えない。
+#[tauri::command]
+async fn list_displays(app: tauri::AppHandle) -> Result<Vec<display::DisplayInfo>, String> {
+    tauri::async_runtime::spawn_blocking(move || display::list(&app))
+        .await
+        .map_err(|failure| failure.to_string())?
+}
+
+/// 壁紙にする画像を選ぶ。登録はせず、選んだパスを返すだけ。
+#[tauri::command]
+async fn pick_image() -> Option<String> {
+    rfd::AsyncFileDialog::new()
+        .add_filter(
+            "Images",
+            &["png", "jpg", "jpeg", "heic", "heif", "tif", "tiff", "gif", "bmp", "webp"],
+        )
+        .pick_file()
+        .await
+        .map(|file| file.path().to_string_lossy().into_owned())
 }
 
 /// コマンドの作業フォルダを選ぶ。登録はせず、選んだパスを返すだけ。
@@ -455,77 +510,209 @@ pub(crate) fn error(code: &str, argument: &str) -> String {
 
 /// 対象の存在確認は新規登録やパス変更のときだけ行う。
 /// 登録済みの対象が後から消えても、名前やキーの変更・削除はできるようにするため。
+/// 存在確認より前の検査は、ファイルから読んだときと同じ `config_problems` を使う。
+/// ただし、保存済みの設定に前からあって手を付けていない問題は通す。
+/// 外で書き換えられた項目が何件あっても、1件ずつ消したり直したりして保存できるようにするため。
+/// 通した項目は保存後も `config_problems` に挙がるので、動かさないままになる。
 fn validate_config(config: &LauncherConfig, previous: &LauncherConfig) -> Result<(), String> {
-    let mut keys = HashSet::new();
-    if !LANGUAGES.contains(&config.language.as_str()) {
-        return Err(error("invalid-language", ""));
-    }
-    if !KEYBOARD_LAYOUTS.contains(&config.keyboard_layout.as_str()) {
-        return Err(error("invalid-layout", ""));
-    }
-    validate_activation(&config.activation.macos)?;
-    validate_activation(&config.activation.windows)?;
-    // 表盤面と裏盤面は別々のキーとして扱う。
-    let mut claim = |key: &str, shift: bool| {
-        if keys.insert((shift, key.to_string())) {
-            Ok(())
-        } else if shift {
-            Err(error("duplicate-key", &format!("Shift+{key}")))
-        } else {
-            Err(error("duplicate-key", key))
-        }
-    };
-    for action in &config.window_actions {
-        if let Some(key) = &action.key {
-            validate_key(key)?;
-            claim(key, action.shift)?;
+    let carried = config_problems(previous);
+    for problem in config_problems(config) {
+        let unchanged = match &problem.item_id {
+            Some(id) => same_item(config, previous, id),
+            None => carried.iter().any(|saved| {
+                saved.item_id.is_none() && saved.name == problem.name && saved.error == problem.error
+            }),
+        };
+        if !unchanged {
+            return Err(problem.error);
         }
     }
     for item in &config.items {
-        if item.name.trim().is_empty() {
-            return Err(error("empty-name", ""));
-        }
-        validate_key(&item.key)?;
-        claim(&item.key, item.shift)?;
-        if matches!(item.target_type, TargetType::Website) {
-            // URLは開く側（ブラウザ）に解釈を任せるので、http(s)であることだけ確かめる。
-            if normalize_url(&item.target.value).ok().as_deref() != Some(item.target.value.as_str())
-            {
-                return Err(error("invalid-url", &item.target.value));
+        match item.target_type {
+            TargetType::Website | TargetType::Display => {}
+            TargetType::Command => validate_working_dir(item, previous)?,
+            // 画像は新しく選んだときだけ確かめる。後から消えたときはキーを押したときに知らせる。
+            TargetType::Wallpaper => {
+                let already_registered = previous
+                    .items
+                    .iter()
+                    .any(|saved| saved.id == item.id && saved.target.value == item.target.value);
+                if !already_registered {
+                    wallpaper::check_image(&item.target.value)?;
+                }
             }
-            continue;
-        }
-        if matches!(item.target_type, TargetType::Command) {
-            validate_command(item, previous)?;
-            continue;
-        }
-        if matches!(item.target_type, TargetType::KobitoAction) {
-            // 起動情報は押されたときに読み直すので、ここでは覚えるものの形だけを確かめる。
-            // アプリを消しても、割り当ての名前やキーは変えられるようにする。
-            let app = item.target.app.as_deref().unwrap_or("");
-            let action = item.target.action.as_deref().unwrap_or("");
-            if !series::is_app_id(app) || action.trim().is_empty() {
-                return Err(error("invalid-series-action", ""));
+            TargetType::Application | TargetType::Folder => {
+                let already_registered = previous
+                    .items
+                    .iter()
+                    .any(|saved| saved.id == item.id && saved.target.value == item.target.value);
+                if !already_registered && !Path::new(&item.target.value).exists() {
+                    return Err(error("missing-target", &item.target.value));
+                }
             }
-            continue;
-        }
-        let already_registered = previous
-            .items
-            .iter()
-            .any(|saved| saved.id == item.id && saved.target.value == item.target.value);
-        if !already_registered && !Path::new(&item.target.value).exists() {
-            return Err(error("missing-target", &item.target.value));
         }
     }
     Ok(())
 }
 
-/// コマンドそのものは動かすまで正しいか分からないので、1行であることだけ確かめる。
-/// 作業フォルダはパスと同じく、新しく指定したときだけ存在を確かめる。
-fn validate_command(item: &LauncherItem, previous: &LauncherConfig) -> Result<(), String> {
-    if command::normalize(&item.target.value).ok().as_deref() != Some(item.target.value.as_str()) {
-        return Err(error("invalid-command", ""));
+/// 保存時の検査を通らなかったもの。`item_id` が無いものは項目でなく、
+/// 言語・起動キー・ウィンドウ整形など設定全体にかかわる。
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ConfigProblem {
+    item_id: Option<String>,
+    name: String,
+    error: String,
+}
+
+/// 保存時と同じ検査を、1件目で止めずに全部集める。
+/// ファイルから読んだ設定はアプリの外で書き換えられているかもしれないので、
+/// ここで見つかった項目は動かさず、設定画面の知らせ欄に出す。対象の存在は確かめない。
+pub(crate) fn config_problems(config: &LauncherConfig) -> Vec<ConfigProblem> {
+    let general = [
+        if LANGUAGES.contains(&config.language.as_str()) {
+            Ok(())
+        } else {
+            Err(error("invalid-language", ""))
+        },
+        if KEYBOARD_LAYOUTS.contains(&config.keyboard_layout.as_str()) {
+            Ok(())
+        } else {
+            Err(error("invalid-layout", ""))
+        },
+        validate_activation(&config.activation.macos),
+        validate_activation(&config.activation.windows),
+    ];
+    let mut problems: Vec<ConfigProblem> = general
+        .into_iter()
+        .filter_map(Result::err)
+        .map(|error| ConfigProblem {
+            item_id: None,
+            name: String::new(),
+            error,
+        })
+        .collect();
+    let mut keys = HashSet::new();
+    for action in &config.window_actions {
+        if let Some(key) = &action.key {
+            let checked = validate_key(key).and_then(|_| claim_key(&mut keys, key, action.shift));
+            if let Err(error) = checked {
+                problems.push(ConfigProblem {
+                    item_id: None,
+                    name: action.name.clone(),
+                    error,
+                });
+            }
+        }
     }
+    for item in &config.items {
+        let checked = check_item(item).and_then(|_| claim_key(&mut keys, &item.key, item.shift));
+        if let Err(error) = checked {
+            problems.push(ConfigProblem {
+                item_id: Some(item.id.clone()),
+                name: item.name.clone(),
+                error,
+            });
+        }
+    }
+    problems
+}
+
+/// キーを押したときに、その項目が保存時の検査を通るかどうか。通らなければその理由。
+pub(crate) fn item_problem(config: &LauncherConfig, item_id: &str) -> Option<String> {
+    config_problems(config)
+        .into_iter()
+        .find(|problem| problem.item_id.as_deref() == Some(item_id))
+        .map(|problem| problem.error)
+}
+
+/// 同じIDの項目が、保存済みの設定と中身まで同じかどうか。
+fn same_item(config: &LauncherConfig, previous: &LauncherConfig, id: &str) -> bool {
+    let find = |config: &LauncherConfig| {
+        config
+            .items
+            .iter()
+            .find(|item| item.id == id)
+            .and_then(|item| serde_json::to_value(item).ok())
+    };
+    matches!((find(config), find(previous)), (Some(now), Some(saved)) if now == saved)
+}
+
+/// 表盤面と裏盤面は別々のキーとして扱う。
+fn claim_key(keys: &mut HashSet<(bool, String)>, key: &str, shift: bool) -> Result<(), String> {
+    if keys.insert((shift, key.to_string())) {
+        Ok(())
+    } else if shift {
+        Err(error("duplicate-key", &format!("Shift+{key}")))
+    } else {
+        Err(error("duplicate-key", key))
+    }
+}
+
+/// 項目1件だけで分かる検査。ほかの項目や保存済みの設定には寄らない。
+fn check_item(item: &LauncherItem) -> Result<(), String> {
+    if item.name.trim().is_empty() {
+        return Err(error("empty-name", ""));
+    }
+    validate_key(&item.key)?;
+    let value = item.target.value.as_str();
+    match item.target_type {
+        // URLは開く側（ブラウザ）に解釈を任せるので、http(s)であることだけ確かめる。
+        TargetType::Website => {
+            if normalize_url(value).ok().as_deref() != Some(value) {
+                return Err(error("invalid-url", value));
+            }
+        }
+        // コマンドそのものは動かすまで正しいか分からないので、1行であることだけ確かめる。
+        TargetType::Command => {
+            if command::normalize(value).ok().as_deref() != Some(value) {
+                return Err(error("invalid-command", ""));
+            }
+        }
+        // `open` はURLも開くので、絶対パスに限って `https:`・`file:` などを弾く。
+        TargetType::Application | TargetType::Folder => {
+            if !Path::new(value).is_absolute() {
+                return Err(error("invalid-path", value));
+            }
+        }
+        TargetType::Display => check_display_setting(item.display.as_ref())?,
+        TargetType::Wallpaper => {
+            if !Path::new(value).is_absolute() {
+                return Err(error("invalid-path", value));
+            }
+            if let Some(setting) = &item.wallpaper {
+                if !WALLPAPER_FITS.contains(&setting.fit.as_str()) {
+                    return Err(error("invalid-wallpaper-fit", &setting.fit));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 巡回に入れられる解像度の数。設定画面の選択と同じ上限。
+const MAX_DISPLAY_MODES: usize = 8;
+
+fn check_display_setting(setting: Option<&DisplaySetting>) -> Result<(), String> {
+    let valid = setting.is_some_and(|setting| {
+        (1..=MAX_DISPLAY_MODES).contains(&setting.modes.len())
+            && setting.modes.iter().all(|mode| {
+                mode.width > 0
+                    && mode.height > 0
+                    && mode.pixel_width >= mode.width
+                    && mode.pixel_height >= mode.height
+                    && mode.refresh.is_finite()
+                    && mode.refresh >= 0.0
+            })
+    });
+    if valid {
+        Ok(())
+    } else {
+        Err(error("invalid-display-setting", ""))
+    }
+}
+
+/// 作業フォルダはパスと同じく、新しく指定したときだけ存在を確かめる。
+fn validate_working_dir(item: &LauncherItem, previous: &LauncherConfig) -> Result<(), String> {
     let Some(dir) = &item.target.working_dir else {
         return Ok(());
     };
@@ -707,6 +894,66 @@ pub(crate) fn float_popup_over_fullscreen(window: &tauri::WebviewWindow) {
     ns_window.setLevel(NSPopUpMenuWindowLevel);
 }
 
+/// 表示した後に呼ぶ。OpenSesame! は常駐していて前面のアプリではないため、
+/// ふつうの表示（orderFront）だと同じ高さに他のアプリのウィンドウがあると裏に回ることがある。
+/// アプリが前面かどうかに関係なく、同じ高さのいちばん手前に出す。
+#[cfg(target_os = "macos")]
+pub(crate) fn bring_popup_to_front(window: &tauri::WebviewWindow) {
+    use objc2_app_kit::NSWindow;
+    let Ok(pointer) = window.ns_window() else {
+        return;
+    };
+    // ns_windowはTauriが保持するNSWindowを指し、ここはメインスレッドで呼ばれる。
+    let ns_window = unsafe { &*pointer.cast::<NSWindow>() };
+    ns_window.orderFrontRegardless();
+}
+
+/// パネルを出すためにDockから一時的に外したか。隠すときに元へ戻す。
+#[cfg(target_os = "macos")]
+static DOCK_HIDDEN_FOR_POPUP: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// 設定画面を開いている間はDockに出る通常アプリなので、他のアプリのフルスクリーンの上に
+/// パネルが出られない。他のアプリを使っている最中にパネルを出すときだけ、
+/// 出している間は常駐のアクセサリに切り替える。メインスレッドで呼ぶこと。
+#[cfg(target_os = "macos")]
+pub(crate) fn before_popup_shown() {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+    let Some(main_thread) = MainThreadMarker::new() else {
+        return;
+    };
+    let ns_app = NSApplication::sharedApplication(main_thread);
+    // 設定画面を使っている最中なら同じSpaceにいるので、切り替えなくても出る。
+    if ns_app.activationPolicy() != NSApplicationActivationPolicy::Regular || ns_app.isActive() {
+        return;
+    }
+    if ns_app.setActivationPolicy(NSApplicationActivationPolicy::Accessory) {
+        DOCK_HIDDEN_FOR_POPUP.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// パネルを隠した後に呼ぶ。設定画面がまだ開いていれば、Dockに戻す。メインスレッドで呼ぶこと。
+#[cfg(target_os = "macos")]
+pub(crate) fn after_popup_hidden(app: &tauri::AppHandle) {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+    if !DOCK_HIDDEN_FOR_POPUP.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    let settings_open = app
+        .get_webview_window("settings")
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false);
+    let Some(main_thread) = MainThreadMarker::new() else {
+        return;
+    };
+    if settings_open {
+        NSApplication::sharedApplication(main_thread)
+            .setActivationPolicy(NSApplicationActivationPolicy::Regular);
+    }
+}
+
 /// macOS 10.14以降、Dockに出る通常アプリのウィンドウは他アプリのフルスクリーンの上に
 /// 出られない。設定画面を閉じている間はDockから外し、常駐のアクセサリとして振る舞う。
 #[cfg(target_os = "macos")]
@@ -771,6 +1018,7 @@ pub fn run() {
     // 他の版と並んで動くとキーフックが二重になるので、ウィンドウを作る前に片付ける。
     instance::take_over_or_exit();
     tauri::Builder::default()
+        .plugin(autostart::plugin())
         .setup(|app| {
             // シリーズのほかのアプリが起動のしかたを知れるよう、起動のたびに書き直す。
             // 書けなくても、ランチャーの機能には関係しないので起動は止めない。
@@ -799,6 +1047,13 @@ pub fn run() {
             apply_vibrancy_to_windows(app.handle());
             // トレイが作れない環境でも本体の機能は動くので、起動は止めない。
             let _ = build_tray(app, &language);
+            autostart::refresh(app.handle());
+            // 設定画面は最初は隠してある。ログイン時の起動では出さずに常駐だけする。
+            if autostart::launched_at_login() {
+                set_dock_visible(app.handle(), false);
+            } else {
+                show_settings_window(app.handle());
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -812,17 +1067,22 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_config,
+            get_config_problems,
             save_config,
             select_target,
             create_website,
             create_command,
-            list_series_actions,
-            create_series_action,
             pick_folder,
+            create_display_item,
+            create_wallpaper,
+            list_displays,
+            pick_image,
             refetch_website_icon,
             select_custom_icon,
             runtime_info,
-            open_accessibility_settings
+            open_accessibility_settings,
+            autostart::get_launch_at_login,
+            autostart::set_launch_at_login
         ])
         .build(tauri::generate_context!())
         .expect("error while building OpenSesame!")
@@ -903,6 +1163,8 @@ mod tests {
                 value: None,
             },
             hide_when_frontmost: false,
+            display: None,
+            wallpaper: None,
         });
         assert!(validate_config(&config, &LauncherConfig::default()).is_err());
     }
@@ -925,6 +1187,8 @@ mod tests {
                 value: None,
             },
             hide_when_frontmost: false,
+            display: None,
+            wallpaper: None,
         }
     }
 
@@ -1046,32 +1310,116 @@ mod tests {
         assert!(validate_config(&renamed, &saved).is_ok());
     }
 
-    fn series_item(app: Option<&str>, action: Option<&str>) -> LauncherItem {
-        let mut item = item_at("series", "KeyM", "");
-        item.target_type = TargetType::KobitoAction;
-        item.target = TargetPath {
-            kind: "kobito-action".into(),
-            app: app.map(str::to_string),
-            action: action.map(str::to_string),
-            ..Default::default()
-        };
+    fn website_item(id: &str, key: &str, url: &str) -> LauncherItem {
+        let mut item = item_at(id, key, url);
+        item.target_type = TargetType::Website;
+        item.target.kind = "url".into();
         item
     }
 
+    /// 外で書き換えられた設定は、保存済みの項目と同じでも通さない。
+    /// 通らない項目だけを挙げ、ほかの項目は巻き込まない。
     #[test]
-    fn series_actions_need_an_app_id_and_an_action_but_no_launch_info() {
-        let saved = LauncherConfig::default();
-        let mut edited = saved.clone();
-        // 起動情報が無くても保存できる（押したときに知らせる）。
-        edited.items.push(series_item(Some("nowhere"), Some("new")));
-        assert!(validate_config(&edited, &saved).is_ok());
-        for (app, action) in [(None, Some("new")), (Some("Bad ID"), Some("new")), (Some("memo"), None), (Some("memo"), Some(" "))] {
-            edited.items[0] = series_item(app, action);
-            assert_eq!(
-                validate_config(&edited, &saved).unwrap_err(),
-                "applauncher-error:invalid-series-action"
-            );
+    fn problems_list_only_the_items_that_fail_the_checks() {
+        let mut config = LauncherConfig::default();
+        config.items.push(item_at("ok", "KeyA", "/Applications/Mail.app"));
+        config.items.push(website_item("js", "KeyS", "javascript:alert(1)"));
+        config.items.push(website_item("file", "KeyD", "file:///etc/passwd"));
+        let mut app = item_at("app-url", "KeyF", "https://example.com/payload");
+        app.target_type = TargetType::Application;
+        config.items.push(app);
+        config.items.push(item_at("folder-url", "KeyG", "file:///Users"));
+        config.items.push(item_at("relative", "KeyH", "Applications/Mail.app"));
+        config.items.push(command_item("two-lines", "echo a\necho b", None));
+        config.items.push(website_item("site", "KeyJ", "https://docs.rs"));
+        config.items.push(command_item("cmd", "make", None));
+        config.items[8].key = "KeyK".into();
+        config.items[6].key = "KeyL".into();
+        let failed: Vec<String> = config_problems(&config)
+            .into_iter()
+            .map(|problem| problem.item_id.unwrap())
+            .collect();
+        assert_eq!(failed, ["js", "file", "app-url", "folder-url", "relative", "two-lines"]);
+        assert_eq!(
+            item_problem(&config, "js").as_deref(),
+            Some("applauncher-error:invalid-url:javascript:alert(1)")
+        );
+        assert_eq!(
+            item_problem(&config, "app-url").as_deref(),
+            Some("applauncher-error:invalid-path:https://example.com/payload")
+        );
+        for id in ["ok", "site", "cmd"] {
+            assert_eq!(item_problem(&config, id), None, "{id} should run");
         }
+        // 新しく入れるときは、画面から保存しても弾く。
+        assert_eq!(
+            validate_config(&config, &LauncherConfig::default()).unwrap_err(),
+            "applauncher-error:invalid-url:javascript:alert(1)"
+        );
+    }
+
+    /// 外で書き換えられた項目が2件あっても、1件ずつ消したり直したりして保存できる。
+    /// 手を付けていない項目は通すが、動かさないまま知らせに残る。
+    #[test]
+    fn bad_items_can_be_removed_or_fixed_one_at_a_time() {
+        let mut saved = LauncherConfig::default();
+        saved.items.push(website_item("js", "KeyS", "javascript:alert(1)"));
+        saved.items.push(command_item("two-lines", "echo a\necho b", None));
+        saved.items.push(item_at("ok", "KeyA", "/"));
+        // 関係ない項目の名前を変えるだけの保存も通る。
+        let mut renamed = saved.clone();
+        renamed.items[2].name = "Root".into();
+        assert!(validate_config(&renamed, &saved).is_ok());
+        assert!(item_problem(&renamed, "js").is_some());
+        // 1件消す。
+        let mut removed = renamed.clone();
+        removed.items.remove(0);
+        assert!(validate_config(&removed, &renamed).is_ok());
+        assert!(item_problem(&removed, "two-lines").is_some());
+        // 残りを直す。直し方が足りなければ弾く。
+        let mut still_bad = removed.clone();
+        still_bad.items[0].target.value = "echo c\necho d".into();
+        assert_eq!(
+            validate_config(&still_bad, &removed).unwrap_err(),
+            "applauncher-error:invalid-command"
+        );
+        let mut fixed = removed.clone();
+        fixed.items[0].target.value = "echo a".into();
+        assert!(validate_config(&fixed, &removed).is_ok());
+        assert!(config_problems(&fixed).is_empty());
+    }
+
+    #[test]
+    fn a_bad_value_cannot_be_written_into_a_saved_item() {
+        let mut saved = LauncherConfig::default();
+        let mut app = item_at("app", "KeyA", "/");
+        app.target_type = TargetType::Application;
+        saved.items.push(app);
+        let mut edited = saved.clone();
+        edited.items[0].target.value = "https://example.com".into();
+        assert_eq!(
+            validate_config(&edited, &saved).unwrap_err(),
+            "applauncher-error:invalid-path:https://example.com"
+        );
+        // 保存済みの不正な値を、別の不正な値に変えるのも弾く。
+        let mut moved = edited.clone();
+        moved.items[0].target.value = "file:///Users".into();
+        assert_eq!(
+            validate_config(&moved, &edited).unwrap_err(),
+            "applauncher-error:invalid-path:file:///Users"
+        );
+    }
+
+    #[test]
+    fn duplicate_keys_turn_off_only_the_later_item() {
+        let mut config = LauncherConfig::default();
+        config.items.push(item_at("first", "KeyA", "/"));
+        config.items.push(item_at("second", "KeyA", "/"));
+        assert_eq!(item_problem(&config, "first"), None);
+        assert_eq!(
+            item_problem(&config, "second").as_deref(),
+            Some("applauncher-error:duplicate-key:KeyA")
+        );
     }
 
     #[test]
@@ -1091,5 +1439,90 @@ mod tests {
         );
         config.activation.macos = vec!["ShiftLeft".into(), "ControlLeft".into()];
         assert!(validate_config(&config, &LauncherConfig::default()).is_ok());
+    }
+    fn display_item(id: &str, key: &str, modes: Vec<model::DisplayModeRef>) -> LauncherItem {
+        let mut item = item_at(id, key, "");
+        item.target_type = TargetType::Display;
+        item.target.kind = "display".into();
+        item.target.value = "Studio Display".into();
+        item.display = Some(DisplaySetting {
+            screen: model::ScreenRef {
+                vendor: 0x610,
+                model: 0xae31,
+                serial: 0,
+                name: "Studio Display".into(),
+            },
+            modes,
+        });
+        item
+    }
+
+    fn mode(width: u32, height: u32, refresh: f64) -> model::DisplayModeRef {
+        model::DisplayModeRef {
+            width,
+            height,
+            pixel_width: width * 2,
+            pixel_height: height * 2,
+            refresh,
+        }
+    }
+
+    #[test]
+    fn display_items_need_one_to_eight_valid_modes() {
+        assert!(check_item(&display_item("d", "KeyD", vec![mode(2560, 1440, 0.0)])).is_ok());
+        assert!(check_item(&display_item("d", "KeyD", vec![mode(2560, 1440, 0.0), mode(1920, 1080, 60.0)])).is_ok());
+        let invalid = "applauncher-error:invalid-display-setting";
+        assert_eq!(check_item(&display_item("d", "KeyD", vec![])).unwrap_err(), invalid);
+        assert_eq!(check_item(&display_item("d", "KeyD", vec![mode(2560, 1440, 0.0); 9])).unwrap_err(), invalid);
+        assert_eq!(check_item(&display_item("d", "KeyD", vec![mode(0, 1440, 0.0)])).unwrap_err(), invalid);
+        assert_eq!(check_item(&display_item("d", "KeyD", vec![mode(2560, 1440, f64::NAN)])).unwrap_err(), invalid);
+        let mut missing = display_item("d", "KeyD", vec![mode(2560, 1440, 0.0)]);
+        missing.display = None;
+        assert_eq!(check_item(&missing).unwrap_err(), invalid);
+        // つながっていない画面でも登録はできる（押したときに知らせる）。
+        let mut config = LauncherConfig::default();
+        config.items.push(display_item("d", "KeyD", vec![mode(2560, 1440, 0.0)]));
+        assert!(validate_config(&config, &LauncherConfig::default()).is_ok());
+    }
+
+    fn wallpaper_item(id: &str, path: &str, fit: &str) -> LauncherItem {
+        let mut item = item_at(id, "KeyW", path);
+        item.target_type = TargetType::Wallpaper;
+        item.wallpaper = Some(WallpaperSetting {
+            screen: None,
+            fit: fit.into(),
+        });
+        item
+    }
+
+    #[test]
+    fn wallpaper_items_need_an_existing_image_only_when_it_changes() {
+        let image = std::env::temp_dir().join(format!("opensesame-{}.png", Uuid::new_v4()));
+        fs::write(&image, b"x").unwrap();
+        let image_path = image.to_string_lossy().into_owned();
+        let mut config = LauncherConfig::default();
+        config.items.push(wallpaper_item("w", &image_path, "fit"));
+        assert!(validate_config(&config, &LauncherConfig::default()).is_ok());
+
+        assert_eq!(
+            check_item(&wallpaper_item("w", "relative.png", "fill")).unwrap_err(),
+            "applauncher-error:invalid-path:relative.png"
+        );
+        assert_eq!(
+            check_item(&wallpaper_item("w", &image_path, "tile")).unwrap_err(),
+            "applauncher-error:invalid-wallpaper-fit:tile"
+        );
+
+        // 保存済みの画像が後から消えても、名前の変更などは保存できる。
+        let saved = config.clone();
+        fs::remove_file(&image).unwrap();
+        config.items[0].name = "Renamed".into();
+        assert!(validate_config(&config, &saved).is_ok());
+        // 新しく選んだ画像は、あることを確かめる。
+        config.items[0].target.value = "/nonexistent/opensesame.png".into();
+        assert_eq!(
+            validate_config(&config, &saved).unwrap_err(),
+            "applauncher-error:image-not-found:/nonexistent/opensesame.png"
+        );
     }
 }

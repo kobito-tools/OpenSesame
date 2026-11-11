@@ -61,27 +61,77 @@ pub enum TargetType {
     Website,
     /// シェルで1行のコマンドを動かす。`target.value` がコマンドそのもの。
     Command,
-    /// シリーズのほかのアプリが起動情報（④）に名乗った操作。
-    /// `target.app` と `target.action` だけを覚え、押されたときに起動情報を読み直す。
-    #[serde(rename = "kobito-action")]
-    KobitoAction,
+    /// 画面の解像度を変える。中身は `LauncherItem::display`。`target.value` は画面の名前（表示用）。
+    Display,
+    /// 壁紙を変える。`target.value` が画像のパス、表示の仕方などは `LauncherItem::wallpaper`。
+    Wallpaper,
+}
+
+/// 画面を覚えておくための手がかり。つなぎ直すと番号（CGDirectDisplayID）が変わることがあるので、
+/// メーカー・型番・製造番号と名前で探し直す（`display::find_screen`）。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ScreenRef {
+    #[serde(default)]
+    pub vendor: u32,
+    #[serde(default)]
+    pub model: u32,
+    #[serde(default)]
+    pub serial: u32,
+    #[serde(default)]
+    pub name: String,
+}
+
+/// 表示モード。`width`・`height` は見た目の解像度（ポイント）、`pixel_*` は実際の画素数。
+/// 両方がそろえば HiDPI かどうかまで決まる。`refresh` が 0 なら、使えるうちで最も高いものを選ぶ。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DisplayModeRef {
+    pub width: u32,
+    pub height: u32,
+    pub pixel_width: u32,
+    pub pixel_height: u32,
+    #[serde(default)]
+    pub refresh: f64,
+}
+
+/// 解像度の切り替え。`modes` が2つ以上なら、押すたびに次のモードへ巡回する。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DisplaySetting {
+    pub screen: ScreenRef,
+    pub modes: Vec<DisplayModeRef>,
+}
+
+/// 壁紙の対象と表示の仕方。`screen` が無ければすべての画面。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WallpaperSetting {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screen: Option<ScreenRef>,
+    #[serde(default = "default_wallpaper_fit")]
+    pub fit: String,
+}
+
+impl Default for WallpaperSetting {
+    fn default() -> Self {
+        Self {
+            screen: None,
+            fit: default_wallpaper_fit(),
+        }
+    }
+}
+
+/// 壁紙の表示の仕方。並びは設定画面の並び。
+pub const WALLPAPER_FITS: &[&str] = &["fill", "fit", "stretch", "center"];
+
+pub fn default_wallpaper_fit() -> String {
+    "fill".into()
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TargetPath {
     pub kind: String,
-    /// パス・URL・コマンド。シリーズの操作では使わない（空のときは書かない）。
-    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub value: String,
     /// コマンドを動かすフォルダ。コマンド以外では使わない。省略時はホームフォルダ。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_dir: Option<String>,
-    /// シリーズの操作の、アプリID。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub app: Option<String>,
-    /// シリーズの操作の、操作の `id`。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub action: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,6 +156,12 @@ pub struct LauncherItem {
     /// アプリが既に前面にあるときは、開く代わりに隠す（Windowsは最小化）。
     #[serde(default)]
     pub hide_when_frontmost: bool,
+    /// 解像度の切り替えの中身。種類が `display` のときだけ使う。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display: Option<DisplaySetting>,
+    /// 壁紙の対象と表示の仕方。種類が `wallpaper` のときだけ使う。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wallpaper: Option<WallpaperSetting>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -157,6 +213,7 @@ pub fn default_keyboard_layout() -> String {
 }
 
 pub fn default_window_actions() -> Vec<WindowActionBinding> {
+    // 設定画面の分類の順に並べる。保存済みの設定もこの順に並べ直す（`storage::fill_window_actions`）。
     [
         ("left-half", "画面左半分"),
         ("right-half", "画面右半分"),
@@ -169,10 +226,28 @@ pub fn default_window_actions() -> Vec<WindowActionBinding> {
         ("left-third", "画面左3分の1"),
         ("center-third", "画面中央3分の1"),
         ("right-third", "画面右3分の1"),
+        ("top-third", "画面上3分の1"),
+        ("middle-third", "画面中段3分の1"),
+        ("bottom-third", "画面下3分の1"),
         ("left-two-thirds", "画面左3分の2"),
+        ("center-two-thirds", "画面中央3分の2"),
         ("right-two-thirds", "画面右3分の2"),
+        ("top-two-thirds", "画面上3分の2"),
+        ("middle-two-thirds", "画面中段3分の2"),
+        ("bottom-two-thirds", "画面下3分の2"),
+        ("expand-left", "左端を広げる"),
+        ("shrink-left", "左端を縮める"),
+        ("expand-right", "右端を広げる"),
+        ("shrink-right", "右端を縮める"),
+        ("expand-top", "上端を広げる"),
+        ("shrink-top", "上端を縮める"),
+        ("expand-bottom", "下端を広げる"),
+        ("shrink-bottom", "下端を縮める"),
         ("center", "画面中央"),
+        ("almost-maximize", "ほぼ全画面"),
         ("maximize", "全画面表示"),
+        ("next-display", "隣の画面へ移す"),
+        ("restore", "整形前に戻す"),
     ]
     .into_iter()
     .map(|(action, name)| WindowActionBinding {
