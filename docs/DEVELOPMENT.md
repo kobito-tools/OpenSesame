@@ -45,7 +45,7 @@ OpenSesame! の中身の構造、ビルド方法、配布手順をまとめて�
 │   ├── capabilities/          # フロントエンドに許可するTauri API
 │   ├── Info.plist             # macOS用の追加項目（Apple Eventsの説明文）
 │   └── tauri.conf.json
-├── .github/workflows/         # CI と リリースビルド
+├── .github/workflows/         # CI
 └── docs/                      # この文書と、シリーズの規格の写し kobito-spec/（手で書き換えない）
 ```
 
@@ -94,8 +94,6 @@ cat "$KOBITO_CONFIG_DIR/apps/opensesame.json"
 版を上げるときは、`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`kobito-app.json` の `version` を揃えて上げます（`cargo test` が揃っているかを確かめます）。
 
 `main` への push と Pull Request では `.github/workflows/ci.yml` が両OSでテストとビルドを確認します。
-
-`.github/workflows/release.yml` は、以前の配布方法（`v` から始まるタグの push で macOS・Windows のインストーラーを作り、Releases に下書きを作る）の名残で、今は使っていません。タグを push するとこれが動くので注意してください。
 
 ### コード署名について
 
