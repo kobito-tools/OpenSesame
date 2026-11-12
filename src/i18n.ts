@@ -58,7 +58,7 @@ const ja = {
   "layer.useRightShift": "起動キーに左Shiftが含まれているため、裏盤面には右Shiftで切り替えます。",
   "layer.useLeftShift": "起動キーに右Shiftが含まれているため、裏盤面には左Shiftで切り替えます。",
   "layer.unavailable": "起動キーに左右両方のShiftが含まれているため、裏盤面に切り替えられません。",
-  "pane.keyboard.desc": "キーを選ぶと下の一覧の該当行へ移動します。登録済みのキーはドラッグで別のキーへ移せます。",
+  "pane.keyboard.desc": "上が表盤面、下が裏盤面（Shift）です。キーを選ぶと、下の一覧の該当行へ移動します。登録済みのキーは、ドラッグで別のキーへ移せます（盤面をまたいでも移せます）。右の切り替えで、一覧に出す盤面を選びます。",
   "pane.list.title": "登録項目",
   "pane.list.desc": "種類別に表示しています。キーの重複は自動的に防止されます。",
 
@@ -366,7 +366,7 @@ const en: Record<MessageKey, string> = {
   "layer.useRightShift": "Left Shift is part of the activation keys, so use Right Shift for the Shift layer.",
   "layer.useLeftShift": "Right Shift is part of the activation keys, so use Left Shift for the Shift layer.",
   "layer.unavailable": "Both Shift keys are activation keys, so the Shift layer cannot be opened.",
-  "pane.keyboard.desc": "Pick a key to jump to its row in the list below. Drag an assigned key onto another key to move it.",
+  "pane.keyboard.desc": "The main layer is on top and the Shift layer below. Pick a key to jump to its row in the list below. Drag an assigned key onto another key to move it, even to the other layer. The switch on the right picks the layer the list shows.",
   "pane.list.title": "Registered items",
   "pane.list.desc": "Grouped by type. Duplicate keys are prevented automatically.",
 

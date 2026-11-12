@@ -205,7 +205,7 @@ Choose **Change the wallpaper** for a key.
 
 ### Use the Shift layer
 
-Switch the keyboard at the top right to **Shift layer** to assign a second set of items. The same key can hold one item on the main layer and another on the Shift layer. To run a Shift-layer item, hold Shift as well as the activation keys.
+The keyboard in the settings window shows the main layer on top and the **Shift layer** below. Click a key on the Shift layer to assign a second set of items. The same key can hold one item on the main layer and another on the Shift layer. Drag an assigned key onto another key to move it, even onto the other layer (if that key is taken, the two swap). The switch at the top right of the keyboard picks the layer the list below shows. To run a Shift-layer item, hold Shift as well as the activation keys.
 
 If Shift is one of your activation keys, that Shift does not switch layers. For example, if Left Shift is an activation key, use Right Shift for the Shift layer.
 

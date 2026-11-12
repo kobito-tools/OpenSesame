@@ -1055,48 +1055,87 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     if (!code) backdrop.querySelector<HTMLInputElement>(".picker-field input")?.focus();
   };
 
-  const onKeyboardSelect = (code: string) => {
+  /** 盤面のキーを押したとき。一覧をその盤面に切り替えてから、その行へ移る（無ければ登録へ）。 */
+  const onKeyboardSelect = (code: string, layerBack: boolean) => {
+    if (back !== layerBack) {
+      back = layerBack;
+      closePicker();
+      paint();
+    }
     if (!revealRow(code)) openPicker(code);
   };
 
   /**
-   * キーボード上のドラッグで割り当てを別のキーへ移す。
+   * キーボード上のドラッグで割り当てを別のキーへ移す。表盤面と裏盤面をまたいでも移せる。
    * 移動先に既に割り当てがあれば、2つのキーの割り当てを入れ替える。
    */
-  const moveKey = (from: string, to: string) => {
-    const owners = (key: string) => [
-      ...config.items.filter((item) => onLayer(item) && item.key === key),
-      ...config.window_actions.filter((binding) => onLayer(binding) && binding.key === key),
+  const moveKey = (from: string, fromBack: boolean, to: string, toBack: boolean) => {
+    const owners = (key: string, layerBack: boolean) => [
+      ...config.items.filter((item) => (item.shift ?? false) === layerBack && item.key === key),
+      ...config.window_actions.filter(
+        (binding) => (binding.shift ?? false) === layerBack && binding.key === key,
+      ),
     ];
-    const moving = owners(from);
+    const moving = owners(from, fromBack);
     if (moving.length === 0) return;
-    const displaced = owners(to);
-    for (const owner of moving) owner.key = to;
-    for (const owner of displaced) owner.key = from;
+    const displaced = owners(to, toBack);
+    for (const owner of moving) {
+      owner.key = to;
+      owner.shift = toBack;
+    }
+    for (const owner of displaced) {
+      owner.key = from;
+      owner.shift = fromBack;
+    }
     void save().then((saved) => {
       if (!saved) return;
-      const params = { from: displayKey(from), to: displayKey(to) };
+      // 盤面をまたいだときは、どちらの盤面かも書き添える。
+      const label = (key: string, layerBack: boolean) =>
+        fromBack === toBack
+          ? displayKey(key)
+          : `${displayKey(key)}（${t(layerBack ? "layer.back" : "layer.front")}）`;
+      const params = { from: label(from, fromBack), to: label(to, toBack) };
       showStatus(t(displaced.length > 0 ? "status.swapped" : "status.moved", params));
     });
   };
 
-  const keyboardPreview = (): HTMLElement => {
+  /** 1枚の盤面。`layerBack` が真なら裏盤面（Shift）。 */
+  const keyboardBoard = (layerBack: boolean): HTMLElement => {
+    const onBoard = (entry: { shift?: boolean }) => (entry.shift ?? false) === layerBack;
     const slots = new Map<string, KeyboardSlot>();
     for (const binding of config.window_actions) {
-      if (binding.key && onLayer(binding)) {
+      if (binding.key && onBoard(binding)) {
         slots.set(binding.key, { name: actionName(binding), node: () => windowIcon(binding.action) });
       }
     }
-    for (const item of config.items.filter(onLayer)) {
+    for (const item of config.items.filter(onBoard)) {
       slots.set(item.key, { name: item.name, node: () => targetIcon(item) });
     }
     const keyboard = buildKeyboard(config.keyboard_layout, slots, {
       variant: "settings",
-      onSelect: onKeyboardSelect,
-      onMove: moveKey,
+      layer: layerBack ? "back" : "front",
+      onSelect: (code) => onKeyboardSelect(code, layerBack),
+      onMove: (from, to, toLayer) =>
+        moveKey(from, layerBack, to, toLayer ? toLayer === "back" : layerBack),
     });
-    keyboard.classList.toggle("keyboard-back", back);
-    return keyboard;
+    keyboard.classList.toggle("keyboard-back", layerBack);
+    const board = document.createElement("section");
+    board.className = "keyboard-board";
+    board.classList.toggle("active", layerBack === back);
+    const label = document.createElement("span");
+    label.className = "board-label";
+    label.textContent = t(layerBack ? "layer.back" : "layer.front");
+    board.append(label, keyboard);
+    return board;
+  };
+
+  /** 表盤面と裏盤面を並べて出す。2枚の間でもドラッグで移せる。 */
+  const keyboardPreview = (): HTMLElement => {
+    const boards = document.createElement("div");
+    boards.className = "keyboard-boards";
+    boards.dataset.dragScope = "";
+    boards.append(keyboardBoard(false), keyboardBoard(true));
+    return boards;
   };
 
   const paintItems = (container: HTMLElement) => {
