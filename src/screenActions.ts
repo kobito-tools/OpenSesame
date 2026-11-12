@@ -3,6 +3,7 @@ import type {
   DisplayInfo,
   DisplayModeRef,
   DisplaySetting,
+  DisplayStep,
   LauncherItem,
   ModeOption,
   ScreenRef,
@@ -12,8 +13,26 @@ import type {
 /** 巡回に入れられる解像度の数。Rust 側の `MAX_DISPLAY_MODES` とそろえる。 */
 export const MAX_DISPLAY_MODES = 8;
 
+/** 1段階上げ下げの向き。一覧の先頭にこの順で出す。 */
+export const DISPLAY_STEPS: DisplayStep[] = ["up", "down"];
+
 /** 壁紙の表示の仕方。並びは Rust 側の `WALLPAPER_FITS` とそろえる。 */
 export const WALLPAPER_FITS: WallpaperFit[] = ["fill", "fit", "stretch", "center"];
+
+/**
+ * アプリに入っている壁紙。Rust 側の `BUILTIN_WALLPAPERS` とそろえる。
+ * 設定画面の縮小画像は public/wallpapers/ にある（元の画像は src-tauri/wallpapers/）。
+ */
+export const BUILTIN_WALLPAPERS = ["kobito-day", "kobito-evening", "kobito-night"] as const;
+export type BuiltinWallpaper = (typeof BUILTIN_WALLPAPERS)[number];
+
+export function isBuiltinWallpaper(name: string): name is BuiltinWallpaper {
+  return (BUILTIN_WALLPAPERS as readonly string[]).includes(name);
+}
+
+export function builtinWallpaperName(name: BuiltinWallpaper): string {
+  return t(`wallpaper.builtin.${name}`);
+}
 
 export function modeLabel(mode: DisplayModeRef): string {
   const size = `${mode.width} × ${mode.height}`;
@@ -35,8 +54,14 @@ export function modesSummary(modes: DisplayModeRef[]): string {
   return modes.map(modeLabel).join(" ⇄ ");
 }
 
+/** 選んだ解像度、または1段階上げ下げの説明。 */
+export function settingSummary(setting: DisplaySetting): string {
+  return setting.step ? t(`display.step.${setting.step}`) : modesSummary(setting.modes);
+}
+
 /** 表示名を省略したときの名前。ポップアップのキーに出るので短くする。 */
 export function defaultDisplayName(setting: DisplaySetting): string {
+  if (setting.step) return t(`display.stepName.${setting.step}`);
   const [first] = setting.modes;
   if (!first) return setting.screen.name;
   if (setting.modes.length === 1) return `${first.width}×${first.height}`;
@@ -71,13 +96,18 @@ export function findDisplay(displays: DisplayInfo[], screen: ScreenRef): number 
 /** 設定画面の一覧に出す、その項目の中身の説明。 */
 export function screenItemSummary(item: LauncherItem): string {
   if (item.type === "display" && item.display) {
-    return `${item.display.screen.name} · ${modesSummary(item.display.modes)}`;
+    return `${item.display.screen.name} · ${settingSummary(item.display)}`;
   }
   if (item.type === "wallpaper") {
     const setting = item.wallpaper;
     const where = setting?.screen ? setting.screen.name : t("wallpaper.allScreens");
     const fit = t(`wallpaper.fit.${setting?.fit ?? "fill"}` as never);
-    return `${item.target.value} · ${where} · ${fit}`;
+    const image =
+      item.target.kind === "builtin" && isBuiltinWallpaper(item.target.value)
+        ? builtinWallpaperName(item.target.value)
+        : item.target.value;
+    const fill = setting?.fill_color ? ` · ${t("picker.wallpaperFill")} ${setting.fill_color}` : "";
+    return `${image} · ${where} · ${fit}${fill}`;
   }
   return item.target.value;
 }
@@ -146,11 +176,15 @@ export function screenTabs(
   return tabs;
 }
 
-/** 表示中の画面・検索語・詳しい一覧かどうか。描き直しても保てるよう呼び出し側が持つ。 */
+/**
+ * 表示中の画面・検索語・詳しい一覧かどうか・1段階上げ下げを選んだか。
+ * 描き直しても保てるよう呼び出し側が持つ。`step` を選ぶと、決まった解像度の選択は外す。
+ */
 export interface DisplayBrowserState {
   screen: number;
   query: string;
   detailed: boolean;
+  step: DisplayStep | null;
 }
 
 export interface DisplayBrowserOptions {
@@ -177,9 +211,22 @@ function optionWords(option: ModeOption): string {
     .toLowerCase();
 }
 
+/** 1段階上げ下げを示す図。矢印の向きで上げる・下げるを分ける。 */
+function stepIcon(step: DisplayStep): HTMLElement {
+  const visual = document.createElement("div");
+  visual.className = "table-icon window-table-icon";
+  const diagram = document.createElement("span");
+  diagram.className = "step-diagram";
+  diagram.dataset.step = step;
+  diagram.textContent = step === "up" ? "↑" : "↓";
+  visual.append(diagram);
+  return visual;
+}
+
 /**
  * 画面のタブ、絞り込みの検索欄、解像度の格子。ウィンドウ整形の一覧と同じ見た目にそろえる。
  * 押した順に選び、2つ以上選ぶと押すたびに順に切り替える項目になる。
+ * 先頭の「1段階上げる・下げる」は、どちらか1つだけを選ぶ（決まった解像度の選択とは両立しない）。
  */
 export function displayModeBrowser(options: DisplayBrowserOptions): HTMLElement {
   const { displays, state, selected } = options;
@@ -228,11 +275,36 @@ export function displayModeBrowser(options: DisplayBrowserOptions): HTMLElement 
       return words.every((word) => haystack.includes(word));
     });
     const largest = Math.max(1, ...list.map((option) => option.width * option.height));
-    description.textContent =
-      selected.length > 0
+    description.textContent = state.step
+      ? t(`display.stepSelected.${state.step}`)
+      : selected.length > 0
         ? t("display.selected", { modes: modesSummary(selected) })
         : t("display.lead");
+    const steps = DISPLAY_STEPS.filter((step) => {
+      const haystack = `${t(`display.step.${step}`)} ${step} step`.toLowerCase();
+      return words.every((word) => haystack.includes(word));
+    });
     grid.replaceChildren(
+      ...steps.map((step) => {
+        const tile = document.createElement("button");
+        tile.type = "button";
+        tile.className = "window-tile picker-tile";
+        const chosen = state.step === step;
+        tile.classList.toggle("selected", chosen);
+        tile.setAttribute("aria-pressed", String(chosen));
+        tile.title = t(`display.stepHint.${step}`);
+        const name = document.createElement("span");
+        name.className = "window-tile-name";
+        name.textContent = t(`display.step.${step}`);
+        tile.append(stepIcon(step), name);
+        tile.addEventListener("click", () => {
+          state.step = chosen ? null : step;
+          if (state.step) selected.length = 0;
+          paintGrid();
+          options.onChange();
+        });
+        return tile;
+      }),
       ...shown.map((option) => {
         const tile = document.createElement("button");
         tile.type = "button";
@@ -261,6 +333,7 @@ export function displayModeBrowser(options: DisplayBrowserOptions): HTMLElement 
           tile.append(badge);
         }
         tile.addEventListener("click", () => {
+          state.step = null;
           if (order !== -1) {
             selected.splice(order, 1);
           } else if (selected.length >= MAX_DISPLAY_MODES) {
@@ -281,7 +354,7 @@ export function displayModeBrowser(options: DisplayBrowserOptions): HTMLElement 
         return tile;
       }),
     );
-    if (shown.length === 0) {
+    if (shown.length === 0 && steps.length === 0) {
       const empty = document.createElement("p");
       empty.className = "window-grid-empty";
       empty.textContent = t("display.empty");
@@ -308,6 +381,34 @@ export function displayModeBrowser(options: DisplayBrowserOptions): HTMLElement 
   paintGrid();
   if (options.autofocus) requestAnimationFrame(() => search.focus());
   return browser;
+}
+
+/** アプリに入っている壁紙を、縮小画像の格子から選ぶ。もう一度押すと選択を外す。 */
+export function builtinWallpaperGrid(
+  current: BuiltinWallpaper | null,
+  onChange: (name: BuiltinWallpaper | null) => void,
+): HTMLElement {
+  const grid = document.createElement("div");
+  grid.className = "wallpaper-grid";
+  for (const name of BUILTIN_WALLPAPERS) {
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "window-tile picker-tile wallpaper-tile";
+    const chosen = name === current;
+    tile.classList.toggle("selected", chosen);
+    tile.setAttribute("aria-pressed", String(chosen));
+    const image = document.createElement("img");
+    image.src = `/wallpapers/${name}.jpg`;
+    image.alt = "";
+    image.loading = "lazy";
+    const label = document.createElement("span");
+    label.className = "window-tile-name";
+    label.textContent = builtinWallpaperName(name);
+    tile.append(image, label);
+    tile.addEventListener("click", () => onChange(chosen ? null : name));
+    grid.append(tile);
+  }
+  return grid;
 }
 
 /** 壁紙の表示の仕方を、図付きの格子から1つ選ぶ。 */

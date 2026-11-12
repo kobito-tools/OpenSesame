@@ -94,10 +94,22 @@ pub struct DisplayModeRef {
 }
 
 /// 解像度の切り替え。`modes` が2つ以上なら、押すたびに次のモードへ巡回する。
+/// `step` があれば `modes` は空で、押したときの解像度から1段階隣へ変える（`display::step_mode`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DisplaySetting {
     pub screen: ScreenRef,
+    #[serde(default)]
     pub modes: Vec<DisplayModeRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<DisplayStep>,
+}
+
+/// 解像度を1段階変える向き。`Up` は大きい解像度（文字が小さく、作業領域が広い）の方。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DisplayStep {
+    Up,
+    Down,
 }
 
 /// 壁紙の対象と表示の仕方。`screen` が無ければすべての画面。
@@ -107,6 +119,9 @@ pub struct WallpaperSetting {
     pub screen: Option<ScreenRef>,
     #[serde(default = "default_wallpaper_fit")]
     pub fit: String,
+    /// 画像の外にできる余白の色（`#RRGGBB`）。無ければ macOS に任せる。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill_color: Option<String>,
 }
 
 impl Default for WallpaperSetting {
@@ -114,12 +129,17 @@ impl Default for WallpaperSetting {
         Self {
             screen: None,
             fit: default_wallpaper_fit(),
+            fill_color: None,
         }
     }
 }
 
 /// 壁紙の表示の仕方。並びは設定画面の並び。
 pub const WALLPAPER_FITS: &[&str] = &["fill", "fit", "stretch", "center"];
+
+/// アプリに入っている壁紙。`target.kind` が `builtin` のとき、`target.value` はこの名前。
+/// 画像はアプリの `wallpapers/<名前>.jpg`（src-tauri/wallpapers/）。
+pub const BUILTIN_WALLPAPERS: &[&str] = &["kobito-day", "kobito-evening", "kobito-night"];
 
 pub fn default_wallpaper_fit() -> String {
     "fill".into()

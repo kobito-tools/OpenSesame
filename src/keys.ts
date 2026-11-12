@@ -284,9 +284,14 @@ export interface KeyboardSlot {
 
 export interface KeyboardOptions {
   variant: "settings" | "popup";
+  /** この盤面の名前（表盤面・裏盤面など）。盤面をまたいでドラッグしたときに、移動先として渡す。 */
+  layer?: string;
   onSelect?: (code: string) => void;
-  /** 割り当て済みのキーを別のキーへドラッグしたときに呼ぶ。 */
-  onMove?: (from: string, to: string) => void;
+  /**
+   * 割り当て済みのキーを別のキーへドラッグしたときに呼ぶ。`toLayer` は落とした先の盤面。
+   * 同じ `[data-drag-scope]` の中にある盤面どうしなら、盤面をまたいで運べる。
+   */
+  onMove?: (from: string, to: string, toLayer?: string) => void;
 }
 
 /** これ以上動いたらクリックではなくドラッグとみなす距離(px)。 */
@@ -301,20 +306,36 @@ function enableKeyDrag(
   keyboard: HTMLElement,
   key: HTMLElement,
   code: string,
-  onMove: (from: string, to: string) => void,
+  onMove: (from: string, to: string, toLayer?: string) => void,
 ): void {
   key.addEventListener("pointerdown", (down) => {
     if (down.button !== 0) return;
+    // 中の画像や文字が、ブラウザ自身のドラッグや文字選択を始めないようにする
+    // （始まるとこちらのドラッグが取り消され、つかめなかったように見える）。
+    down.preventDefault();
     const startX = down.clientX;
     const startY = down.clientY;
+    // 盤面をまたいで落とせる範囲。無ければこの盤面だけ。
+    const scope = keyboard.closest<HTMLElement>("[data-drag-scope]") ?? keyboard;
     let ghost: HTMLElement | null = null;
     let target: HTMLElement | null = null;
+    // 指が窓の外へ出ても離したことを受け取れるよう、ポインタをこのキーに結び付ける。
+    try {
+      key.setPointerCapture(down.pointerId);
+    } catch {
+      // 結び付けられなくても、window で受け取る。
+    }
 
     const dropTargetAt = (x: number, y: number): HTMLElement | null => {
       const hit = document.elementFromPoint(x, y)?.closest<HTMLElement>(".keyboard-key");
-      if (!hit || !keyboard.contains(hit) || hit === key) return null;
+      if (!hit || !scope.contains(hit) || hit === key) return null;
       if (hit.classList.contains("reserved") || !hit.dataset.code) return null;
       return hit;
+    };
+
+    const place = (x: number, y: number) => {
+      if (!ghost) return;
+      ghost.style.transform = `translate(${x - ghost.offsetWidth / 2}px, ${y - ghost.offsetHeight / 2}px)`;
     };
 
     const onPointerMove = (move: PointerEvent) => {
@@ -322,14 +343,22 @@ function enableKeyDrag(
         if (Math.hypot(move.clientX - startX, move.clientY - startY) < DRAG_THRESHOLD) return;
         const rect = key.getBoundingClientRect();
         ghost = key.cloneNode(true) as HTMLElement;
+        ghost.classList.remove("drop-target");
         ghost.classList.add("drag-ghost");
         ghost.style.width = `${rect.width}px`;
         ghost.style.height = `${rect.height}px`;
+        // 複製元のキーの transition を引き継ぐと、左上から指の位置まで滑ってくるので切る。
+        ghost.style.transition = "none";
+        ghost.style.animation = "none";
+        // 置く前に指の位置へ動かしておく（一瞬でも左上に出さない）。
+        ghost.style.visibility = "hidden";
         document.body.append(ghost);
+        place(move.clientX, move.clientY);
+        ghost.style.visibility = "";
         key.classList.add("drag-source");
-        keyboard.classList.add("dragging");
+        scope.classList.add("dragging");
       }
-      ghost.style.transform = `translate(${move.clientX - ghost.offsetWidth / 2}px, ${move.clientY - ghost.offsetHeight / 2}px)`;
+      place(move.clientX, move.clientY);
       const next = dropTargetAt(move.clientX, move.clientY);
       if (next !== target) {
         target?.classList.remove("drop-target");
@@ -345,13 +374,15 @@ function enableKeyDrag(
       if (!ghost) return;
       ghost.remove();
       key.classList.remove("drag-source");
-      keyboard.classList.remove("dragging");
+      scope.classList.remove("dragging");
       target?.classList.remove("drop-target");
       // ドラッグ直後に同じキー上で発生するクリックで一覧へ移動しないよう、少しの間だけ印を付ける。
       key.dataset.dragged = "";
       window.setTimeout(() => delete key.dataset.dragged, 0);
       const to = target?.dataset.code;
-      if (commit && to && to !== code) onMove(code, to);
+      const toLayer = target?.closest<HTMLElement>(".keyboard-layout")?.dataset.layer;
+      const sameKey = to === code && toLayer === keyboard.dataset.layer;
+      if (commit && to && !sameKey) onMove(code, to, toLayer);
     };
     const onPointerUp = () => finish(true);
     const onPointerCancel = () => finish(false);
@@ -371,6 +402,9 @@ export function buildKeyboard(
   const rows = KEYBOARD_LAYOUTS[layout];
   const keyboard = document.createElement("div");
   keyboard.className = `keyboard-layout ${layout} keyboard-${options.variant}`;
+  if (options.layer) keyboard.dataset.layer = options.layer;
+  // キーの中の画像をブラウザが持ち出さないようにする（こちらのドラッグと取り合いになる）。
+  keyboard.addEventListener("dragstart", (event) => event.preventDefault());
   // 列数と行数だけを渡し、実寸はCSSの --key-size に委ねて1x1を正方形に保つ。
   keyboard.style.setProperty("--columns", String(ROW_UNITS * 10));
   keyboard.style.setProperty("--rows", String(rows.length));
@@ -400,6 +434,7 @@ export function buildKeyboard(
         const visual = document.createElement("span");
         visual.className = "key-visual";
         visual.append(slot.node());
+        for (const image of visual.querySelectorAll("img")) image.draggable = false;
         key.append(visual);
       }
       const label = document.createElement("kbd");

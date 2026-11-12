@@ -18,6 +18,8 @@ OpenSesame! の中身の構造、ビルド方法、配布手順をまとめて�
 ├── build.sh                   # 手元で使う OpenSesame!.app を作る（macOS）
 ├── scripts/make-icons.sh      # kobito/icon.svg から、icon-1024.png と src-tauri/icons/ を作り直す
 ├── scripts/social-preview.sh  # GitHub の紹介画像（assets/social-preview.png・.ja.png）を作り直す
+├── scripts/make-wallpapers.sh # アプリに入れる壁紙（昼・夕方・夜）を scripts/wallpapers/*.py から作り直す
+├── public/wallpapers/         # 設定画面に出す、アプリの壁紙の縮小画像（480×270）
 ├── assets/                    # GitHub の紹介画像（英語版 social-preview.png・日本語版 social-preview.ja.png）
 ├── index.html                 # 設定画面・ポップアップ共通のエントリ
 ├── src/                       # フロントエンド
@@ -44,6 +46,7 @@ OpenSesame! の中身の構造、ビルド方法、配布手順をまとめて�
 │   │   ├── icons.rs           # アイコンのキャッシュ
 │   │   └── model.rs           # 設定ファイルの構造
 │   ├── icons/                 # Tauri が使うアプリアイコン（scripts/make-icons.sh が kobito/icon.svg から作る）
+│   ├── wallpapers/            # アプリに入れる壁紙 kobito-day・evening・night.jpg（3840×2160。tauri.conf.json の resources）
 │   ├── capabilities/          # フロントエンドに許可するTauri API
 │   ├── Info.plist             # macOS用の追加項目（Apple Eventsの説明文）
 │   └── tauri.conf.json
@@ -125,6 +128,16 @@ GitHub のリポジトリの紹介画像（Social preview、1280×640）を、�
 ```bash
 ./scripts/social-preview.sh <NotoSansJP.ttf のパス>
 ```
+
+## アプリの壁紙
+
+壁紙の項目で選べる3枚（昼の丘・夕暮れの展望台・夜の街）は、`scripts/wallpapers/` の Python で SVG に描き、Google Chrome で 3840×2160 に書き出したものです。水彩のにじみ・鉛筆の線・紙の地・筆の点で描いた木の葉は、SVG のフィルターで出しています（共通の部品は `watercolor.py`、昼は `day.py`、夕方は `evening.py`、夜は `night.py`）。絵を変えたら、次で作り直します（Python 3・Google Chrome・ImageMagick を使います）。
+
+```bash
+./scripts/make-wallpapers.sh
+```
+
+登録項目では、`target.kind` を `builtin`、`target.value` を壁紙の名前（`kobito-day` など。Rust の `BUILTIN_WALLPAPERS` と TypeScript の `BUILTIN_WALLPAPERS` をそろえる）にします。押したときに、アプリの中の画像をデータ保存先の `wallpapers/<名前>-<バイト数>.jpg` へ写してから壁紙にします（アプリの中を直接指すと、アプリを移したり作り直したりしたときに壁紙が消えるため。名前に大きさを含めるのは、画像を差し替えたときに macOS が古い画像を出し続けないようにするため）。余白の色は `wallpaper.fill_color`（`#RRGGBB`）で、`NSWorkspaceDesktopImageFillColorKey` に渡します。
 
 ## データ保存先
 
@@ -224,7 +237,7 @@ GitHub のリポジトリの紹介画像（Social preview、1280×640）を、�
 
 アクセシビリティの許可はアプリのコード署名識別子とパスに紐づきます。ad-hoc 署名により識別子は `io.github.kobito-tools.opensesame` で固定されます。未署名だとビルドのたびに識別子が変わり、許可が定着しません。ビルドし直して差し替えた際に反応しなくなった場合は、一覧から項目を削除して追加し直します。
 
-ウィンドウ整形は `osascript` で System Events を操作するため、初回に「オートメーション」の許可ダイアログが出ます。説明文は `src-tauri/Info.plist` の `NSAppleEventsUsageDescription` です。
+ウィンドウ整形は、アクセシビリティ API（`AXUIElement`）で最前面のウィンドウを直接読み書きします（`window_layout.rs`）。キーの監視と同じアクセシビリティの許可で動きます。対象のアプリは NSWorkspace の最前面のアプリ（`frontmostApplication`）で決めます。AX の「フォーカスのあるアプリ」は、パネルを出している間は OpenSesame 自身になることがあり、使うとパネルを動かしてしまうので使いません。AX で読めない・動かせないウィンドウは、予備として以前と同じ `osascript`＋System Events で動かします（このときだけ「オートメーション」の許可を使います。説明文は `src-tauri/Info.plist` の `NSAppleEventsUsageDescription`）。どちらで動かしたか・失敗の理由は、`OPENSESAME_TRACE=1` で出ます。以前は `osascript` で System Events を2回呼んでいて、1回の整形に 0.4〜0.9 秒かかっていました。画面の一覧（`NSScreen`）はメインスレッドでしか読めないので、ウィンドウを読む前に頼んでおき、待ち時間を重ねています。
 
 ## macOSのキーフックについて
 
@@ -232,11 +245,19 @@ macOSでは `src-tauri/src/tap_macos.rs` で CGEventTap を直接張っていま
 
 rdev の `grab` はキー押下のたびに Text Services Manager でキーの文字表記を引きますが、このAPIはメインスレッドでの呼び出しを強制します。`grab` は専用スレッドで動くため、最初のキー押下で必ず `dispatch_assert_queue` に引っかかり SIGTRAP で落ちます。文字表記は本アプリでは使いません。
 
-自前のタップはアプリのメインランループに繋いであり、コールバックもメインスレッドで動きます。そのため AppKit に触れても安全です。OSにタップを切られた場合（`kCGEventTapDisabledByTimeout` など）はコールバック内で張り直します。修飾キーの押下と解放は、flagsChanged イベントのデバイス固有ビットで判別しています。
+自前のタップは、専用のスレッド（`opensesame-keys`、優先度は利用者の操作向け）のランループに繋いであります。メインスレッドに繋ぐと、設定画面やパネルの描画でメインスレッドが忙しい間、Mac 全体のキー入力がタップの順番待ちで遅れるためです。コールバックは AppKit に触れません。押したキーに当たる項目を探すだけにし、保存時の検査のやり直しや起動は別のスレッドで行います。OSにタップを切られた場合（`kCGEventTapDisabledByTimeout` など）はコールバック内で張り直します。修飾キーの押下と解放は、flagsChanged イベントのデバイス固有ビットで判別しています。
 
 AppKit に触れる処理（ウィンドウ表示、ディスプレイの照会）は、`run_on_main_thread` でメインスレッドへ回してください。重い処理をタップのコールバックで直接行うと、OSにタップを切られます。
 
 Windows では rdev の `grab`（低レベルキーボードフック）を使っています。
+
+## 反応の速さを測る
+
+`OPENSESAME_TRACE=1` を付けて起動すると、キーを押してからパネルが出るまで・整形が終わるまで・項目を開き終わるまでの時間を、標準エラーへ出します（`trace.rs`）。
+
+```bash
+OPENSESAME_TRACE=1 "/Applications/kobito-tools/OpenSesame!.app/Contents/MacOS/OpenSesame"
+```
 
 ## 半透明の作り方
 

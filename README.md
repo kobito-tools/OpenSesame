@@ -21,8 +21,8 @@ OpenSesame! is part of [kobito-tools](https://github.com/kobito-tools), a series
 | Folder | Opens the folder in Finder |
 | Website | Opens the URL in your default browser |
 | Command | Runs a one-line terminal command, such as `uv run app.py` |
-| Resolution | Changes a display to the resolution you chose, or switches between two or more on each press. See [Change the display resolution](#change-the-display-resolution) |
-| Wallpaper | Sets a chosen image as the wallpaper of all displays or of one display. See [Change the wallpaper](#change-the-wallpaper) |
+| Resolution | Changes a display to the resolution you chose, switches between two or more on each press, or moves one step up or down from the current one. See [Change the display resolution](#change-the-display-resolution) |
+| Wallpaper | Sets one of the included wallpapers or your own image as the wallpaper of all displays or of one display. See [Change the wallpaper](#change-the-wallpaper) |
 
 Each key can hold two items: one on the main layer and one on the Shift layer.
 
@@ -96,10 +96,6 @@ OpenSesame! needs Accessibility permission to notice your key presses while you 
 3. Turn on the switch next to OpenSesame!.
 
 Within a few seconds the guide disappears and OpenSesame! starts listening. You do not need to restart it.
-
-### Allow Automation
-
-The first time you use a window layout, macOS asks whether “OpenSesame!” may control “System Events”. Click **Allow**.
 
 ### Switch the settings window to English
 
@@ -184,6 +180,7 @@ Choose **Change the resolution** for a key, then pick a display from the tabs at
 
 - The tiles show each resolution as it looks (for a Retina or other HiDPI display, the “looks like” size), one per size, with modes that match the display’s shape. **Current** marks the resolution in use and **Default** the display’s default. Turn on **More** to also see each refresh rate, non-HiDPI modes and modes with a different aspect ratio.
 - Pick two or more tiles to switch between them in the order you picked (up to 8). Each press moves to the next one, and back to the first after the last. Use this to switch between, say, a larger-text and a more-space resolution with one key.
+- Pick **One step up** or **One step down** (the first two tiles) to move one resolution larger or smaller than the one in use each time you press the key. The steps are the resolutions in the list above. Up means a larger resolution: smaller text and more space. At the largest or smallest resolution, nothing changes and the settings window tells you. Put one on each of two keys to step up and down freely.
 - The display is remembered by its maker, model, serial number and name, so the key still works after you unplug and reconnect it, even on another port.
 - If the display is not connected, or it does not offer that resolution, nothing changes and the settings window opens to tell you.
 - The change stays after you log out, just like changing it in System Settings. Use **Edit** in the list to pick other resolutions.
@@ -194,18 +191,21 @@ Choose **Change the wallpaper** for a key.
 
 | Field | What to enter |
 |---|---|
-| Image file | The path of the image. Type it, or use **Choose…** to pick one. PNG, JPEG, HEIC and other image files work |
+| Included wallpapers | Three watercolor wallpapers that come with the app: **Hill by day**, **Lookout at sunset** and **City at night**. Click one to use it |
+| Image file | To use your own image instead, its path. Type it, or use **Choose…** to pick one. PNG, JPEG, HEIC and other image files work |
 | Display | **All displays**, or one display |
 | Fit | **Fill screen**, **Fit to screen**, **Stretch** or **Center** |
-| Display name | The name shown on the panel and in the list. Empty means the image file name |
+| Margin color | Turn on **Choose the margin color** to pick the color around the image when it does not cover the screen (**Fit to screen**, **Center**). Off leaves it to macOS |
+| Display name | The name shown on the panel and in the list. Empty means the image file name (or the wallpaper's name) |
 
 - macOS changes the wallpaper only for the Space currently shown on each display. To change it on other Spaces (desktops), switch to them and press the key again.
+- The included wallpapers are 3840 × 2160. When you use one, the app copies it to its own data folder and sets it from there, so the wallpaper stays even if you move or rebuild the app.
 - If the image has been moved or deleted, or the chosen display is not connected, nothing changes and the settings window opens to tell you.
 - Use **Edit** in the list to change the image, display or fit.
 
 ### Use the Shift layer
 
-Switch the keyboard at the top right to **Shift layer** to assign a second set of items. The same key can hold one item on the main layer and another on the Shift layer. To run a Shift-layer item, hold Shift as well as the activation keys.
+The keyboard in the settings window shows the main layer on top and the **Shift layer** below. Click a key on the Shift layer to assign a second set of items. The same key can hold one item on the main layer and another on the Shift layer. Drag an assigned key onto another key to move it, even onto the other layer (if that key is taken, the two swap). The switch at the top right of the keyboard picks the layer the list below shows. To run a Shift-layer item, hold Shift as well as the activation keys.
 
 If Shift is one of your activation keys, that Shift does not switch layers. For example, if Left Shift is an activation key, use Right Shift for the Shift layer.
 
@@ -239,7 +239,7 @@ Click the OpenSesame! icon in the menu bar and choose **Quit OpenSesame!**.
 
 ### Windows are not laid out
 
-Open **System Settings → Privacy & Security → Automation** and make sure “System Events” is turned on under OpenSesame!.
+Window layouts use the same Accessibility permission as the keys. Open **System Settings → Privacy & Security → Accessibility** and make sure OpenSesame! is turned on. For a window that cannot be moved that way, OpenSesame! tries again through “System Events”; the first time, macOS asks whether OpenSesame! may control it. Click **Allow** (you can check it later under **Automation**). Some windows, such as dialogs or apps that fix their own size, cannot be moved or resized at all; nothing changes for them.
 
 ### setup.sh stops with “A repository with the same app ID exists in another location”
 

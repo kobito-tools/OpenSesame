@@ -11,7 +11,7 @@ use std::{
         Arc, Mutex, RwLock,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -38,7 +38,8 @@ pub enum Verdict {
 /// ポップアップ操作はフックのコールバック内で行わない。
 /// コールバックが遅いとOSにタップを切られるため、専用スレッドへ送る。
 enum PopupCommand {
-    Show,
+    /// 起動キーがそろった時刻（反応の速さの記録に使う）。
+    Show(Instant),
     Hide,
     /// 真なら裏盤面（Shift）を出す。
     Layer(bool),
@@ -84,7 +85,7 @@ impl Machine {
             // Shiftを先に押していたら、最初から裏盤面で出す。
             let back = self.shift_down(&activation);
             self.sync_layer(back);
-            let _ = self.popup.send(PopupCommand::Show);
+            let _ = self.popup.send(PopupCommand::Show(Instant::now()));
         } else if self.armed {
             let back = self.shift_down(&activation);
             self.sync_layer(back);
@@ -110,19 +111,31 @@ impl Machine {
             if first_press {
                 let app = self.app.clone();
                 thread::spawn(move || {
-                    let _ = window_layout::apply(&app, &action);
+                    if let Err(reason) = window_layout::apply(&app, &action) {
+                        crate::trace::note(&format!("window layout {action} failed: {reason}"));
+                    }
                 });
             }
             return Verdict::Swallow;
         }
 
-        if let Some((item, problem)) = find_item(&self.config, key, back) {
+        if let Some(item) = find_item(&self.config, key, back) {
             self.consumed.insert(key.to_string());
             if first_press {
-                match problem {
-                    None => launch(self.app.clone(), item),
-                    Some(_) => refuse(self.app.clone(), item),
-                }
+                // 保存時の検査をし直すのは、キーの受け取りの外で行う（受け取りを待たせないため）。
+                let app = self.app.clone();
+                let config = self.config.clone();
+                let started = Instant::now();
+                thread::spawn(move || {
+                    let problem = config
+                        .read()
+                        .ok()
+                        .and_then(|config| crate::item_problem(&config, &item.id));
+                    match problem {
+                        None => launch(app, item, started),
+                        Some(_) => refuse(app, item),
+                    }
+                });
             }
             return Verdict::Swallow;
         }
@@ -234,20 +247,13 @@ fn watch_hook(app: &AppHandle, input_error: &InputError, tap: crate::tap_macos::
 #[cfg(not(target_os = "macos"))]
 fn watch_hook(_app: &AppHandle, _input_error: &InputError, _hook: ()) {}
 
-/// macOSのフックはメインスレッドのランループに繋ぐ必要がある。
+/// macOSのフックは専用のスレッドのランループに繋ぐ（メインスレッドが描画で忙しくてもキーが遅れないように）。
 #[cfg(target_os = "macos")]
 fn install_hook(
-    app: &AppHandle,
+    _app: &AppHandle,
     machine: Arc<Mutex<Machine>>,
 ) -> Result<crate::tap_macos::Tap, String> {
-    let (sender, receiver) = mpsc::channel();
-    app.run_on_main_thread(move || {
-        let _ = sender.send(crate::tap_macos::install(machine));
-    })
-    .map_err(|error| error.to_string())?;
-    receiver
-        .recv_timeout(Duration::from_secs(10))
-        .map_err(|_| "main thread did not respond".to_string())?
+    crate::tap_macos::install(machine)
 }
 
 /// macOS以外はrdevのフックをそのまま使う。
@@ -287,7 +293,10 @@ fn start_popup_worker(app: AppHandle) -> Sender<PopupCommand> {
             // ウィンドウやモニタの照会はAppKitに触れるのでメインスレッドで行う。
             let handle = app.clone();
             let _ = app.run_on_main_thread(move || match command {
-                PopupCommand::Show => show_popup(&handle),
+                PopupCommand::Show(started) => {
+                    show_popup(&handle);
+                    crate::trace::log("popup shown", started);
+                }
                 PopupCommand::Hide => hide_popup(&handle),
                 PopupCommand::Layer(back) => {
                     let _ = handle.emit_to("popup", "popup-layer", back);
@@ -373,15 +382,13 @@ fn find_item(
     config: &Arc<RwLock<LauncherConfig>>,
     pressed_name: &str,
     shift: bool,
-) -> Option<(LauncherItem, Option<String>)> {
+) -> Option<LauncherItem> {
     let config = config.read().ok()?;
-    let item = config
+    config
         .items
         .iter()
         .find(|item| item.shift == shift && key_matches(&item.key, pressed_name))
-        .cloned()?;
-    let problem = crate::item_problem(&config, &item.id);
-    Some((item, problem))
+        .cloned()
 }
 
 /// 設定ファイルがアプリの外で書き換えられ、検査を通らない中身になった項目は動かさない。
@@ -413,24 +420,25 @@ fn find_window_action(
         .map(|binding| binding.action.clone())
 }
 
-fn launch(app: AppHandle, item: LauncherItem) {
+/// キーの受け取りの外（専用のスレッド）で呼ぶ。`started` はキーを押した時刻（反応の速さの記録に使う）。
+fn launch(app: AppHandle, item: LauncherItem, started: Instant) {
+    let what = format!("launch {:?} {}", item.target_type, item.name);
     // 解像度と壁紙は、できなかったこと（画面が無い・画像が無いなど）を知らせ欄に出し、何も変えない。
     if matches!(item.target_type, TargetType::Display | TargetType::Wallpaper) {
-        thread::spawn(move || {
-            let result = match (&item.target_type, &item.display, &item.wallpaper) {
-                (TargetType::Display, Some(setting), _) => crate::display::apply(&app, setting),
-                (TargetType::Display, None, _) => Err(error("invalid-display-setting", "")),
-                (_, _, setting) => crate::wallpaper::apply(
-                    &app,
-                    &item.target.value,
-                    &setting.clone().unwrap_or_default(),
-                ),
-            };
-            if let Err(message) = result {
-                let _ = app.emit("launch-failed", message);
-                show_settings(&app);
-            }
-        });
+        let result = match (&item.target_type, &item.display, &item.wallpaper) {
+            (TargetType::Display, Some(setting), _) => crate::display::apply(&app, setting),
+            (TargetType::Display, None, _) => Err(error("invalid-display-setting", "")),
+            (_, _, setting) => crate::wallpaper::apply(
+                &app,
+                &item.target,
+                &setting.clone().unwrap_or_default(),
+            ),
+        };
+        crate::trace::log(&what, started);
+        if let Err(message) = result {
+            let _ = app.emit("launch-failed", message);
+            show_settings(&app);
+        }
         return;
     }
     if matches!(item.target_type, TargetType::Command) {
@@ -443,16 +451,16 @@ fn launch(app: AppHandle, item: LauncherItem) {
                 show_settings(&app);
             },
         );
+        crate::trace::log(&what, started);
         return;
     }
-    thread::spawn(move || {
-        let toggles = item.hide_when_frontmost
-            && matches!(item.target_type, TargetType::Application);
-        if toggles && frontmost::hide_if_frontmost(&app, &item.target.value) {
-            return;
-        }
-        let _ = open::that(item.target.value);
-    });
+    let toggles = item.hide_when_frontmost && matches!(item.target_type, TargetType::Application);
+    if toggles && frontmost::hide_if_frontmost(&app, &item.target.value) {
+        crate::trace::log(&what, started);
+        return;
+    }
+    let _ = open::that(item.target.value);
+    crate::trace::log(&what, started);
 }
 
 fn show_popup(app: &AppHandle) {
