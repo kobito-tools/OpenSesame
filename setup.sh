@@ -58,6 +58,7 @@ else
 fi
 
 # ソースが新しくなっていることがあるので、毎回作り直す。
+# 時間のかかる段階（部品の取り込み・画面・Rust のコンパイル）は、build.sh が段階ごとの行と経過秒数を出す。
 kobito_step "Building $APP_NAME.app (takes a few minutes)"
 built="$kobito_here/$APP_NAME.app"
 kobito_run zsh ./build.sh || kobito_fail "Could not build the app. Check the output above."
