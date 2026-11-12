@@ -23,6 +23,10 @@ import {
   screenItemSummary,
   screenTabs,
   wallpaperFitGrid,
+  builtinWallpaperGrid,
+  builtinWallpaperName,
+  isBuiltinWallpaper,
+  type BuiltinWallpaper,
   type DisplayBrowserState,
 } from "./screenActions";
 import type {
@@ -252,6 +256,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
   /** 登録できたかどうかを返す。失敗時は入力欄を残して直せるようにする。 */
   const addWallpaper = async (
     path: string,
+    builtin: BuiltinWallpaper | null,
     setting: WallpaperSetting,
     name: string,
     key?: string,
@@ -259,6 +264,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
     try {
       const item = await invoke<LauncherItem>("create_wallpaper", {
         path,
+        builtin,
         setting,
         name: name || null,
         key: key ?? null,
@@ -878,19 +884,50 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       let chosen = savedScreen ? findDisplay(displays, savedScreen) : -1;
       if (savedScreen && chosen === -1) chosen = -2;
       let fit: WallpaperFit = saved?.fit ?? "fill";
+      /** アプリに入っている壁紙を選んでいれば、その名前。自分の画像なら null。 */
+      let builtin: BuiltinWallpaper | null =
+        editing?.target.kind === "builtin" && isBuiltinWallpaper(editing.target.value)
+          ? editing.target.value
+          : null;
 
       const form = document.createElement("form");
       form.className = "picker-form";
+      const builtinWrapper = document.createElement("div");
+      builtinWrapper.className = "picker-field";
+      const builtinCaption = document.createElement("span");
+      builtinCaption.textContent = t("picker.wallpaperBuiltin");
+      const builtinSlot = document.createElement("div");
+      const paintBuiltin = () => {
+        builtinSlot.replaceChildren(
+          builtinWallpaperGrid(builtin, (next) => {
+            builtin = next;
+            if (next) imageInput.value = "";
+            paintBuiltin();
+          }),
+        );
+      };
+      builtinWrapper.append(builtinCaption, builtinSlot);
       const [imageWrapper, imageInput] = field(
         t("picker.wallpaperImage"),
         t("picker.wallpaperImageHint"),
       );
-      imageInput.required = true;
-      imageInput.value = editing?.target.value ?? "";
+      imageInput.value = builtin ? "" : (editing?.target.value ?? "");
+      // 自分の画像を書いたら、アプリの壁紙の選択は外す。
+      imageInput.addEventListener("input", () => {
+        if (builtin && imageInput.value.trim()) {
+          builtin = null;
+          paintBuiltin();
+        }
+      });
+      paintBuiltin();
       const pickImage = createButton(t("picker.commandDirPick"), "button compact");
       pickImage.addEventListener("click", async () => {
         const picked = await invoke<string | null>("pick_image");
-        if (picked) imageInput.value = picked;
+        if (picked) {
+          imageInput.value = picked;
+          builtin = null;
+          paintBuiltin();
+        }
       });
       const imageRow = document.createElement("div");
       imageRow.className = "picker-field-row";
@@ -944,33 +981,66 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       spaces.textContent = t("wallpaper.spaces");
       fitWrapper.append(fitCaption, fitSlot, spaces);
 
+      // 余白の色。決めないときは macOS に任せる（これまでと同じ）。
+      const fillWrapper = document.createElement("div");
+      fillWrapper.className = "picker-field";
+      const fillCaption = document.createElement("span");
+      fillCaption.textContent = t("picker.wallpaperFill");
+      const fillRow = document.createElement("div");
+      fillRow.className = "picker-field-row fill-row";
+      const fillToggle = document.createElement("label");
+      fillToggle.className = "hide-toggle";
+      const fillBox = document.createElement("input");
+      fillBox.type = "checkbox";
+      fillBox.checked = Boolean(saved?.fill_color);
+      const fillText = document.createElement("span");
+      fillText.textContent = t("wallpaper.fillCustom");
+      fillToggle.append(fillBox, fillText);
+      const fillColor = document.createElement("input");
+      fillColor.type = "color";
+      fillColor.className = "fill-color";
+      fillColor.value = saved?.fill_color ?? "#1F2430";
+      fillColor.disabled = !fillBox.checked;
+      fillColor.setAttribute("aria-label", t("picker.wallpaperFill"));
+      fillBox.addEventListener("change", () => {
+        fillColor.disabled = !fillBox.checked;
+      });
+      fillRow.append(fillToggle, fillColor);
+      const fillHint = document.createElement("p");
+      fillHint.className = "window-browser-desc";
+      fillHint.textContent = t("wallpaper.fillHint");
+      fillWrapper.append(fillCaption, fillRow, fillHint);
+
       const [nameWrapper, nameInput] = nameField(t("picker.wallpaperNameHint"), editing?.name ?? "");
       const [footer, submit] = formFooter(t(editing ? "picker.commandSave" : "picker.websiteAdd"));
-      form.append(imageWrapper, screenWrapper, fitWrapper, nameWrapper, footer);
+      form.append(builtinWrapper, imageWrapper, screenWrapper, fitWrapper, fillWrapper, nameWrapper, footer);
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         const path = imageInput.value.trim();
-        if (!path) {
+        if (!builtin && !path) {
           showStatus(t("wallpaper.chooseImage"), "error");
           return;
         }
         const screen =
           chosen >= 0 ? displays[chosen]?.screen : chosen === -2 ? savedScreen : undefined;
         const setting: WallpaperSetting = screen ? { screen, fit } : { fit };
+        if (fillBox.checked) setting.fill_color = fillColor.value.toUpperCase();
+        const typedName = nameInput.value.trim();
         submit.disabled = true;
         if (editing) {
-          editing.target.value = path;
+          editing.target.kind = builtin ? "builtin" : "path";
+          editing.target.value = builtin ?? path;
           editing.wallpaper = setting;
-          editing.name = nameInput.value.trim() || editing.name;
+          editing.name = typedName || (builtin ? builtinWallpaperName(builtin) : editing.name);
           if (await save()) closePicker();
           else submit.disabled = false;
           return;
         }
-        if (await addWallpaper(path, setting, nameInput.value.trim(), code)) closePicker();
+        const name = typedName || (builtin ? builtinWallpaperName(builtin) : "");
+        if (await addWallpaper(path, builtin, setting, name, code)) closePicker();
         else submit.disabled = false;
       });
       card.replaceChildren(title, form);
-      if (!editing) imageInput.focus();
     };
 
     if (code) paintChoices();

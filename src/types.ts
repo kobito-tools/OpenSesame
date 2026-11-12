@@ -59,10 +59,11 @@ export interface DisplaySetting {
 
 export type WallpaperFit = "fill" | "fit" | "stretch" | "center";
 
-/** 壁紙の対象と表示の仕方。`screen` が無ければすべての画面。 */
+/** 壁紙の対象と表示の仕方。`screen` が無ければすべての画面。`fill_color` は余白の色（`#RRGGBB`）。 */
 export interface WallpaperSetting {
   screen?: ScreenRef;
   fit: WallpaperFit;
+  fill_color?: string;
 }
 
 /** 設定画面に出す表示モードの選択肢。 */
@@ -91,7 +92,8 @@ export interface LauncherItem {
   shift?: boolean;
   target: {
     /** Webサイトは "url"、コマンドは "command"、解像度は "display"、それ以外はファイルシステム上の "path"。 */
-    kind: "path" | "url" | "command" | "display";
+    /** `builtin` はアプリに入っている壁紙（`value` はその名前）。 */
+    kind: "path" | "url" | "command" | "display" | "builtin";
     value: string;
     /** コマンドを動かすフォルダ。省略時はホームフォルダ。 */
     working_dir?: string;

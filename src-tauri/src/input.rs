@@ -422,7 +422,7 @@ fn launch(app: AppHandle, item: LauncherItem) {
                 (TargetType::Display, None, _) => Err(error("invalid-display-setting", "")),
                 (_, _, setting) => crate::wallpaper::apply(
                     &app,
-                    &item.target.value,
+                    &item.target,
                     &setting.clone().unwrap_or_default(),
                 ),
             };

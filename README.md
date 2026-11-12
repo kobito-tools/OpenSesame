@@ -22,7 +22,7 @@ OpenSesame! is part of [kobito-tools](https://github.com/kobito-tools), a series
 | Website | Opens the URL in your default browser |
 | Command | Runs a one-line terminal command, such as `uv run app.py` |
 | Resolution | Changes a display to the resolution you chose, switches between two or more on each press, or moves one step up or down from the current one. See [Change the display resolution](#change-the-display-resolution) |
-| Wallpaper | Sets a chosen image as the wallpaper of all displays or of one display. See [Change the wallpaper](#change-the-wallpaper) |
+| Wallpaper | Sets one of the included wallpapers or your own image as the wallpaper of all displays or of one display. See [Change the wallpaper](#change-the-wallpaper) |
 
 Each key can hold two items: one on the main layer and one on the Shift layer.
 
@@ -195,12 +195,15 @@ Choose **Change the wallpaper** for a key.
 
 | Field | What to enter |
 |---|---|
-| Image file | The path of the image. Type it, or use **Choose…** to pick one. PNG, JPEG, HEIC and other image files work |
+| Included wallpapers | Three watercolor wallpapers that come with the app: **Hill by day**, **Lookout at sunset** and **City at night**. Click one to use it |
+| Image file | To use your own image instead, its path. Type it, or use **Choose…** to pick one. PNG, JPEG, HEIC and other image files work |
 | Display | **All displays**, or one display |
 | Fit | **Fill screen**, **Fit to screen**, **Stretch** or **Center** |
-| Display name | The name shown on the panel and in the list. Empty means the image file name |
+| Margin color | Turn on **Choose the margin color** to pick the color around the image when it does not cover the screen (**Fit to screen**, **Center**). Off leaves it to macOS |
+| Display name | The name shown on the panel and in the list. Empty means the image file name (or the wallpaper's name) |
 
 - macOS changes the wallpaper only for the Space currently shown on each display. To change it on other Spaces (desktops), switch to them and press the key again.
+- The included wallpapers are 3840 × 2160. When you use one, the app copies it to its own data folder and sets it from there, so the wallpaper stays even if you move or rebuild the app.
 - If the image has been moved or deleted, or the chosen display is not connected, nothing changes and the settings window opens to tell you.
 - Use **Edit** in the list to change the image, display or fit.
 

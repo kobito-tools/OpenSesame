@@ -18,6 +18,8 @@ OpenSesame! の中身の構造、ビルド方法、配布手順をまとめて�
 ├── build.sh                   # 手元で使う OpenSesame!.app を作る（macOS）
 ├── scripts/make-icons.sh      # kobito/icon.svg から、icon-1024.png と src-tauri/icons/ を作り直す
 ├── scripts/social-preview.sh  # GitHub の紹介画像（assets/social-preview.png・.ja.png）を作り直す
+├── scripts/make-wallpapers.sh # アプリに入れる壁紙（昼・夕方・夜）を scripts/wallpapers/*.py から作り直す
+├── public/wallpapers/         # 設定画面に出す、アプリの壁紙の縮小画像（480×270）
 ├── assets/                    # GitHub の紹介画像（英語版 social-preview.png・日本語版 social-preview.ja.png）
 ├── index.html                 # 設定画面・ポップアップ共通のエントリ
 ├── src/                       # フロントエンド
@@ -44,6 +46,7 @@ OpenSesame! の中身の構造、ビルド方法、配布手順をまとめて�
 │   │   ├── icons.rs           # アイコンのキャッシュ
 │   │   └── model.rs           # 設定ファイルの構造
 │   ├── icons/                 # Tauri が使うアプリアイコン（scripts/make-icons.sh が kobito/icon.svg から作る）
+│   ├── wallpapers/            # アプリに入れる壁紙 kobito-day・evening・night.jpg（3840×2160。tauri.conf.json の resources）
 │   ├── capabilities/          # フロントエンドに許可するTauri API
 │   ├── Info.plist             # macOS用の追加項目（Apple Eventsの説明文）
 │   └── tauri.conf.json
@@ -125,6 +128,16 @@ GitHub のリポジトリの紹介画像（Social preview、1280×640）を、�
 ```bash
 ./scripts/social-preview.sh <NotoSansJP.ttf のパス>
 ```
+
+## アプリの壁紙
+
+壁紙の項目で選べる3枚（昼の丘・夕暮れの展望台・夜の街）は、`scripts/wallpapers/` の Python で SVG に描き、Google Chrome で 3840×2160 に書き出したものです。水彩のにじみ・鉛筆の線・紙の地・筆の点で描いた木の葉は、SVG のフィルターで出しています（共通の部品は `watercolor.py`、昼は `day.py`、夕方は `evening.py`、夜は `night.py`）。絵を変えたら、次で作り直します（Python 3・Google Chrome・ImageMagick を使います）。
+
+```bash
+./scripts/make-wallpapers.sh
+```
+
+登録項目では、`target.kind` を `builtin`、`target.value` を壁紙の名前（`kobito-day` など。Rust の `BUILTIN_WALLPAPERS` と TypeScript の `BUILTIN_WALLPAPERS` をそろえる）にします。押したときに、アプリの中の画像をデータ保存先の `wallpapers/<名前>-<バイト数>.jpg` へ写してから壁紙にします（アプリの中を直接指すと、アプリを移したり作り直したりしたときに壁紙が消えるため。名前に大きさを含めるのは、画像を差し替えたときに macOS が古い画像を出し続けないようにするため）。余白の色は `wallpaper.fill_color`（`#RRGGBB`）で、`NSWorkspaceDesktopImageFillColorKey` に渡します。
 
 ## データ保存先
 
