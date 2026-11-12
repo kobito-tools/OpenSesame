@@ -369,6 +369,14 @@ h2 { margin: 0; font-size: 15px; }
 }
 .picker-field input:focus { border-color: rgba(79, 70, 229, .55); box-shadow: 0 0 0 3px var(--accent-soft); }
 .picker-field-row { display: flex; gap: 6px; align-items: center; }
+/* アプリに入っている壁紙の縮小画像 */
+.wallpaper-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.wallpaper-tile { padding: 6px 6px 8px; gap: 6px; }
+.wallpaper-tile img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; box-shadow: 0 0 0 1px rgba(15, 23, 42, .08); }
+.fill-row { gap: 12px; }
+.picker-field-row input.fill-color { flex: 0 0 44px; padding: 3px; }
+.fill-color { width: 44px; height: 28px; padding: 0 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-strong); cursor: pointer; }
+.fill-color:disabled { opacity: .4; cursor: default; }
 .picker-field-row input { flex: 1; min-width: 0; }
 
 /* ---------- ポップアップ ---------- */

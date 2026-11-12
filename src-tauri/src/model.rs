@@ -119,6 +119,9 @@ pub struct WallpaperSetting {
     pub screen: Option<ScreenRef>,
     #[serde(default = "default_wallpaper_fit")]
     pub fit: String,
+    /// 画像の外にできる余白の色（`#RRGGBB`）。無ければ macOS に任せる。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill_color: Option<String>,
 }
 
 impl Default for WallpaperSetting {
@@ -126,12 +129,17 @@ impl Default for WallpaperSetting {
         Self {
             screen: None,
             fit: default_wallpaper_fit(),
+            fill_color: None,
         }
     }
 }
 
 /// 壁紙の表示の仕方。並びは設定画面の並び。
 pub const WALLPAPER_FITS: &[&str] = &["fill", "fit", "stretch", "center"];
+
+/// アプリに入っている壁紙。`target.kind` が `builtin` のとき、`target.value` はこの名前。
+/// 画像はアプリの `wallpapers/<名前>.jpg`（src-tauri/wallpapers/）。
+pub const BUILTIN_WALLPAPERS: &[&str] = &["kobito-day", "kobito-evening", "kobito-night"];
 
 pub fn default_wallpaper_fit() -> String {
     "fill".into()

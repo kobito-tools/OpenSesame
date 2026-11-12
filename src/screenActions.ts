@@ -19,6 +19,21 @@ export const DISPLAY_STEPS: DisplayStep[] = ["up", "down"];
 /** 壁紙の表示の仕方。並びは Rust 側の `WALLPAPER_FITS` とそろえる。 */
 export const WALLPAPER_FITS: WallpaperFit[] = ["fill", "fit", "stretch", "center"];
 
+/**
+ * アプリに入っている壁紙。Rust 側の `BUILTIN_WALLPAPERS` とそろえる。
+ * 設定画面の縮小画像は public/wallpapers/ にある（元の画像は src-tauri/wallpapers/）。
+ */
+export const BUILTIN_WALLPAPERS = ["kobito-day", "kobito-evening", "kobito-night"] as const;
+export type BuiltinWallpaper = (typeof BUILTIN_WALLPAPERS)[number];
+
+export function isBuiltinWallpaper(name: string): name is BuiltinWallpaper {
+  return (BUILTIN_WALLPAPERS as readonly string[]).includes(name);
+}
+
+export function builtinWallpaperName(name: BuiltinWallpaper): string {
+  return t(`wallpaper.builtin.${name}`);
+}
+
 export function modeLabel(mode: DisplayModeRef): string {
   const size = `${mode.width} × ${mode.height}`;
   return mode.refresh > 0 ? `${size} · ${Math.round(mode.refresh)}Hz` : size;
@@ -87,7 +102,12 @@ export function screenItemSummary(item: LauncherItem): string {
     const setting = item.wallpaper;
     const where = setting?.screen ? setting.screen.name : t("wallpaper.allScreens");
     const fit = t(`wallpaper.fit.${setting?.fit ?? "fill"}` as never);
-    return `${item.target.value} · ${where} · ${fit}`;
+    const image =
+      item.target.kind === "builtin" && isBuiltinWallpaper(item.target.value)
+        ? builtinWallpaperName(item.target.value)
+        : item.target.value;
+    const fill = setting?.fill_color ? ` · ${t("picker.wallpaperFill")} ${setting.fill_color}` : "";
+    return `${image} · ${where} · ${fit}${fill}`;
   }
   return item.target.value;
 }
@@ -361,6 +381,34 @@ export function displayModeBrowser(options: DisplayBrowserOptions): HTMLElement 
   paintGrid();
   if (options.autofocus) requestAnimationFrame(() => search.focus());
   return browser;
+}
+
+/** アプリに入っている壁紙を、縮小画像の格子から選ぶ。もう一度押すと選択を外す。 */
+export function builtinWallpaperGrid(
+  current: BuiltinWallpaper | null,
+  onChange: (name: BuiltinWallpaper | null) => void,
+): HTMLElement {
+  const grid = document.createElement("div");
+  grid.className = "wallpaper-grid";
+  for (const name of BUILTIN_WALLPAPERS) {
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "window-tile picker-tile wallpaper-tile";
+    const chosen = name === current;
+    tile.classList.toggle("selected", chosen);
+    tile.setAttribute("aria-pressed", String(chosen));
+    const image = document.createElement("img");
+    image.src = `/wallpapers/${name}.jpg`;
+    image.alt = "";
+    image.loading = "lazy";
+    const label = document.createElement("span");
+    label.className = "window-tile-name";
+    label.textContent = builtinWallpaperName(name);
+    tile.append(image, label);
+    tile.addEventListener("click", () => onChange(chosen ? null : name));
+    grid.append(tile);
+  }
+  return grid;
 }
 
 /** 壁紙の表示の仕方を、図付きの格子から1つ選ぶ。 */

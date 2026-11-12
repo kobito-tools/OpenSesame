@@ -300,21 +300,34 @@ fn create_display_item(
     Ok(item)
 }
 
-/// 壁紙の切り替えを登録項目にする。表示名を省略したときは画像のファイル名を使う。
+/// 壁紙の切り替えを登録項目にする。`builtin` を渡すとアプリに入っている壁紙、無ければ `path` の画像。
+/// 表示名を省略したときは画像のファイル名（入っている壁紙なら、その名前）を使う。
 #[tauri::command]
 fn create_wallpaper(
     path: String,
+    builtin: Option<String>,
     setting: WallpaperSetting,
     name: Option<String>,
     key: Option<String>,
     shift: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<LauncherItem, String> {
-    let path = path.trim().to_string();
-    if !Path::new(&path).is_absolute() {
-        return Err(error("invalid-path", &path));
-    }
-    wallpaper::check_image(&path)?;
+    let (kind, path) = match builtin {
+        Some(builtin) => {
+            if !wallpaper::is_builtin(&builtin) {
+                return Err(error("image-not-found", &builtin));
+            }
+            ("builtin", builtin)
+        }
+        None => {
+            let path = path.trim().to_string();
+            if !Path::new(&path).is_absolute() {
+                return Err(error("invalid-path", &path));
+            }
+            wallpaper::check_image(&path)?;
+            ("path", path)
+        }
+    };
     let name = name
         .map(|name| name.trim().to_string())
         .filter(|name| !name.is_empty())
@@ -334,7 +347,7 @@ fn create_wallpaper(
         key,
         shift,
         target: TargetPath {
-            kind: "path".into(),
+            kind: kind.into(),
             value: path,
             ..Default::default()
         },
@@ -537,7 +550,7 @@ fn validate_config(config: &LauncherConfig, previous: &LauncherConfig) -> Result
                     .items
                     .iter()
                     .any(|saved| saved.id == item.id && saved.target.value == item.target.value);
-                if !already_registered {
+                if !already_registered && item.target.kind != "builtin" {
                     wallpaper::check_image(&item.target.value)?;
                 }
             }
@@ -676,12 +689,21 @@ fn check_item(item: &LauncherItem) -> Result<(), String> {
         }
         TargetType::Display => check_display_setting(item.display.as_ref())?,
         TargetType::Wallpaper => {
-            if !Path::new(value).is_absolute() {
+            if item.target.kind == "builtin" {
+                if !wallpaper::is_builtin(value) {
+                    return Err(error("image-not-found", value));
+                }
+            } else if !Path::new(value).is_absolute() {
                 return Err(error("invalid-path", value));
             }
             if let Some(setting) = &item.wallpaper {
                 if !WALLPAPER_FITS.contains(&setting.fit.as_str()) {
                     return Err(error("invalid-wallpaper-fit", &setting.fit));
+                }
+                if let Some(color) = &setting.fill_color {
+                    if wallpaper::parse_color(color).is_none() {
+                        return Err(error("invalid-fill-color", color));
+                    }
                 }
             }
         }
@@ -1502,8 +1524,34 @@ mod tests {
         item.wallpaper = Some(WallpaperSetting {
             screen: None,
             fit: fit.into(),
+            fill_color: None,
         });
         item
+    }
+
+    #[test]
+    fn builtin_wallpapers_and_fill_colors_are_checked() {
+        let mut builtin = wallpaper_item("w", "kobito-evening", "fit");
+        builtin.target.kind = "builtin".into();
+        assert!(check_item(&builtin).is_ok());
+        // 入っている壁紙は、画像のパスを確かめない。
+        let mut config = LauncherConfig::default();
+        config.items.push(builtin.clone());
+        assert!(validate_config(&config, &LauncherConfig::default()).is_ok());
+        builtin.target.value = "kobito-noon".into();
+        assert_eq!(
+            check_item(&builtin).unwrap_err(),
+            "applauncher-error:image-not-found:kobito-noon"
+        );
+
+        let mut colored = config.items[0].clone();
+        colored.wallpaper.as_mut().unwrap().fill_color = Some("#1E2A3B".into());
+        assert!(check_item(&colored).is_ok());
+        colored.wallpaper.as_mut().unwrap().fill_color = Some("navy".into());
+        assert_eq!(
+            check_item(&colored).unwrap_err(),
+            "applauncher-error:invalid-fill-color:navy"
+        );
     }
 
     #[test]
