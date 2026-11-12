@@ -21,7 +21,7 @@ OpenSesame! is part of [kobito-tools](https://github.com/kobito-tools), a series
 | Folder | Opens the folder in Finder |
 | Website | Opens the URL in your default browser |
 | Command | Runs a one-line terminal command, such as `uv run app.py` |
-| Resolution | Changes a display to the resolution you chose, or switches between two or more on each press. See [Change the display resolution](#change-the-display-resolution) |
+| Resolution | Changes a display to the resolution you chose, switches between two or more on each press, or moves one step up or down from the current one. See [Change the display resolution](#change-the-display-resolution) |
 | Wallpaper | Sets a chosen image as the wallpaper of all displays or of one display. See [Change the wallpaper](#change-the-wallpaper) |
 
 Each key can hold two items: one on the main layer and one on the Shift layer.
@@ -184,6 +184,7 @@ Choose **Change the resolution** for a key, then pick a display from the tabs at
 
 - The tiles show each resolution as it looks (for a Retina or other HiDPI display, the “looks like” size), one per size, with modes that match the display’s shape. **Current** marks the resolution in use and **Default** the display’s default. Turn on **More** to also see each refresh rate, non-HiDPI modes and modes with a different aspect ratio.
 - Pick two or more tiles to switch between them in the order you picked (up to 8). Each press moves to the next one, and back to the first after the last. Use this to switch between, say, a larger-text and a more-space resolution with one key.
+- Pick **One step up** or **One step down** (the first two tiles) to move one resolution larger or smaller than the one in use each time you press the key. The steps are the resolutions in the list above. Up means a larger resolution: smaller text and more space. At the largest or smallest resolution, nothing changes and the settings window tells you. Put one on each of two keys to step up and down freely.
 - The display is remembered by its maker, model, serial number and name, so the key still works after you unplug and reconnect it, even on another port.
 - If the display is not connected, or it does not offer that resolution, nothing changes and the settings window opens to tell you.
 - The change stays after you log out, just like changing it in System Settings. Use **Edit** in the list to pick other resolutions.

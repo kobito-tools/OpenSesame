@@ -18,7 +18,7 @@ import {
   displayModeBrowser,
   findDisplay,
   MAX_DISPLAY_MODES,
-  modesSummary,
+  settingSummary,
   sameMode,
   screenItemSummary,
   screenTabs,
@@ -771,6 +771,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         screen: found >= 0 ? found : mainIndex,
         query: "",
         detailed: false,
+        step: found >= 0 ? (saved?.step ?? null) : null,
       };
       const selected: DisplayModeRef[] =
         found >= 0 && saved ? saved.modes.map((mode) => ({ ...mode })) : [];
@@ -788,7 +789,7 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         note.className = "activation-note";
         note.textContent = t("display.disconnected", {
           name: saved.screen.name,
-          modes: modesSummary(saved.modes),
+          modes: settingSummary(saved),
         });
         notes.push(note);
       }
@@ -798,9 +799,11 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
       const updatePlaceholder = () => {
         const display = displays[state.screen];
         nameInput.placeholder =
-          display && selected.length > 0
-            ? defaultDisplayName({ screen: display.screen, modes: selected })
-            : t("picker.displayNameHint");
+          display && state.step
+            ? defaultDisplayName({ screen: display.screen, modes: [], step: state.step })
+            : display && selected.length > 0
+              ? defaultDisplayName({ screen: display.screen, modes: selected })
+              : t("picker.displayNameHint");
       };
       const browserSlot = document.createElement("div");
       let shownScreen = state.screen;
@@ -836,11 +839,13 @@ export async function renderSettings(root: HTMLElement): Promise<void> {
         event.preventDefault();
         const display = displays[state.screen];
         if (!display) return;
-        if (selected.length === 0) {
+        if (!state.step && selected.length === 0) {
           showStatus(t("display.chooseMode"), "error");
           return;
         }
-        const setting: DisplaySetting = { screen: display.screen, modes: [...selected] };
+        const setting: DisplaySetting = state.step
+          ? { screen: display.screen, modes: [], step: state.step }
+          : { screen: display.screen, modes: [...selected] };
         const name = nameInput.value.trim() || defaultDisplayName(setting);
         submit.disabled = true;
         if (editing) {
