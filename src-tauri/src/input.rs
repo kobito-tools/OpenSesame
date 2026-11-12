@@ -111,7 +111,9 @@ impl Machine {
             if first_press {
                 let app = self.app.clone();
                 thread::spawn(move || {
-                    let _ = window_layout::apply(&app, &action);
+                    if let Err(reason) = window_layout::apply(&app, &action) {
+                        crate::trace::note(&format!("window layout {action} failed: {reason}"));
+                    }
                 });
             }
             return Verdict::Swallow;

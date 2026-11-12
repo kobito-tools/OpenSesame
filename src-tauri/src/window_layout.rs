@@ -343,8 +343,12 @@ static HISTORY: Mutex<History> = Mutex::new(History::new());
 struct FrontWindow {
     key: String,
     frame: Rect,
+    /// AX で読めたウィンドウ。読めずに AppleScript で読んだときは None（動かすのも AppleScript）。
     #[cfg(target_os = "macos")]
-    element: platform::AxElement,
+    element: Option<platform::AxElement>,
+    /// 対象のアプリのプロセスID（AppleScript で動かすときに使う）。
+    #[cfg(target_os = "macos")]
+    pid: i32,
     #[cfg(windows)]
     handle: windows_sys::Win32::Foundation::HWND,
 }
@@ -362,7 +366,7 @@ pub fn apply(app: &AppHandle, action: &str) -> Result<(), String> {
 fn apply_now(app: &AppHandle, action: &str) -> Result<(), String> {
     // 画面の一覧はメインスレッドで読むので、先に頼んでおき、ウィンドウを読む間に用意させる。
     let screens = platform::screens_later(app);
-    let front = platform::front_window()?;
+    let front = platform::front_window(app)?;
     if action == RESTORE {
         let original = HISTORY
             .lock()
@@ -388,9 +392,9 @@ mod platform {
     //! キーの監視と同じアクセシビリティの許可で動き、System Events を操る許可は要らない。
     use super::{flip_to_top_left, FrontWindow, Rect, Screen};
     use objc2::MainThreadMarker;
-    use objc2_app_kit::NSScreen;
+    use objc2_app_kit::{NSScreen, NSWorkspace};
     use objc2_foundation::NSString;
-    use std::{ffi::c_void, sync::mpsc, time::Duration};
+    use std::{ffi::c_void, process::Command, sync::mpsc, time::Duration};
     use tauri::AppHandle;
 
     type CFTypeRef = *const c_void;
@@ -411,12 +415,10 @@ mod platform {
 
     #[link(name = "ApplicationServices", kind = "framework")]
     extern "C" {
-        fn AXUIElementCreateSystemWide() -> CFTypeRef;
         fn AXUIElementCreateApplication(pid: i32) -> CFTypeRef;
         fn AXUIElementCopyAttributeValue(element: CFTypeRef, attribute: CFTypeRef, value: *mut CFTypeRef) -> i32;
         fn AXUIElementSetAttributeValue(element: CFTypeRef, attribute: CFTypeRef, value: CFTypeRef) -> i32;
         fn AXUIElementSetMessagingTimeout(element: CFTypeRef, seconds: f32) -> i32;
-        fn AXUIElementGetPid(element: CFTypeRef, pid: *mut i32) -> i32;
         fn AXValueCreate(kind: u32, value: *const c_void) -> CFTypeRef;
         fn AXValueGetValue(value: CFTypeRef, kind: u32, out: *mut c_void) -> bool;
     }
@@ -451,15 +453,20 @@ mod platform {
         }
 
         fn copy(&self, attribute: &str) -> Option<AxElement> {
+            self.copy_with_status(attribute).ok()
+        }
+
+        /// 読めなかったときは AXError の番号を返す（記録に出して原因を追えるように）。
+        fn copy_with_status(&self, attribute: &str) -> Result<AxElement, i32> {
             let name = NSString::from_str(attribute);
             let mut value: CFTypeRef = std::ptr::null();
             let status = unsafe {
                 AXUIElementCopyAttributeValue(self.0, (&*name as *const NSString).cast(), &mut value)
             };
             if status == AX_SUCCESS {
-                AxElement::new(value)
+                AxElement::new(value).ok_or(status)
             } else {
-                None
+                Err(status)
             }
         }
 
@@ -508,43 +515,141 @@ mod platform {
         }
     }
 
-    /// 最前面のアプリの、操作対象のウィンドウ（フォーカスのあるもの、無ければメインのもの）。
-    pub fn front_window() -> Result<FrontWindow, String> {
-        let not_found = || "操作対象のウィンドウが見つかりません".to_string();
-        let system = AxElement::new(unsafe { AXUIElementCreateSystemWide() }).ok_or_else(not_found)?;
-        unsafe { AXUIElementSetMessagingTimeout(system.0, MESSAGING_TIMEOUT) };
-        let focused = system.copy("AXFocusedApplication").ok_or_else(not_found)?;
-        let mut pid = 0;
-        if unsafe { AXUIElementGetPid(focused.0, &mut pid) } != AX_SUCCESS {
-            return Err(not_found());
+    /// 最前面のアプリ（NSWorkspace の frontmostApplication）のプロセスID。メインスレッドで読む
+    /// （前面のアプリはメインスレッドのランループで更新されるため）。
+    /// AX の「フォーカスのあるアプリ」は使わない。パネルを出している間は OpenSesame 自身になることがあり、
+    /// そのまま使うと、目当てのウィンドウではなくパネルを動かしてしまう。
+    fn frontmost_pid(app: &AppHandle) -> Result<i32, String> {
+        let (sender, receiver) = mpsc::channel();
+        app.run_on_main_thread(move || {
+            let pid = NSWorkspace::sharedWorkspace()
+                .frontmostApplication()
+                .map(|front| front.processIdentifier());
+            let _ = sender.send(pid);
+        })
+        .map_err(|error| error.to_string())?;
+        let pid = receiver
+            .recv_timeout(Duration::from_secs(2))
+            .ok()
+            .flatten()
+            .ok_or_else(|| "操作対象のウィンドウが見つかりません".to_string())?;
+        if pid == std::process::id() as i32 {
+            return Err("最前面が OpenSesame! のため、整形しません".into());
         }
-        // 取り出したアプリの要素とは別に、PID から作り直して問い合わせの待ち時間を決める。
-        let application = AxElement::new(unsafe { AXUIElementCreateApplication(pid) }).ok_or_else(not_found)?;
+        Ok(pid)
+    }
+
+    /// AX で、そのアプリの操作対象のウィンドウ（フォーカスのあるもの、無ければメインのもの）を読む。
+    fn ax_front_window(pid: i32) -> Result<FrontWindow, String> {
+        let application = AxElement::new(unsafe { AXUIElementCreateApplication(pid) })
+            .ok_or_else(|| "AXUIElementCreateApplication failed".to_string())?;
         unsafe { AXUIElementSetMessagingTimeout(application.0, MESSAGING_TIMEOUT) };
         let window = application
-            .copy("AXFocusedWindow")
-            .or_else(|| application.copy("AXMainWindow"))
-            .ok_or_else(not_found)?;
+            .copy_with_status("AXFocusedWindow")
+            .or_else(|_| application.copy_with_status("AXMainWindow"))
+            .map_err(|status| format!("AX window of pid {pid}: error {status}"))?;
         let frame = window
             .frame()
-            .ok_or_else(|| "ウィンドウの位置を読み取れません".to_string())?;
+            .ok_or_else(|| format!("AX frame of pid {pid} could not be read"))?;
         // 同じアプリの別のウィンドウを見分けられるよう、PID と要素のハッシュを組にする。
         let key = format!("{pid}:{:x}", unsafe { CFHash(window.0) });
-        Ok(FrontWindow { key, frame, element: window })
+        Ok(FrontWindow { key, frame, element: Some(window), pid })
+    }
+
+    /// 最前面のアプリの、操作対象のウィンドウ。AX で読めなければ、以前と同じ AppleScript で読む。
+    pub fn front_window(app: &AppHandle) -> Result<FrontWindow, String> {
+        let pid = frontmost_pid(app)?;
+        match ax_front_window(pid) {
+            Ok(window) => Ok(window),
+            Err(reason) => {
+                crate::trace::note(&format!("window layout falls back to AppleScript: {reason}"));
+                let frame = applescript::read(pid)?;
+                Ok(FrontWindow { key: pid.to_string(), frame, element: None, pid })
+            }
+        }
     }
 
     /// 位置と大きさを変え、アプリが実際に受け入れた位置と大きさを返す
     /// （最小の大きさや文字単位の大きさに合わせて、アプリが値を変えることがある）。
     /// 別の画面へ移すときは大きさが画面に縛られるので、位置 → 大きさ → 位置の順に置く。
+    /// AX で動かせなければ、AppleScript で動かす。
     pub fn set_frame(window: &FrontWindow, target: Rect) -> Result<Rect, String> {
-        let element = &window.element;
-        let moved = element.set_position(target.x, target.y);
-        let resized = element.set_size(target.width, target.height);
-        let placed = element.set_position(target.x, target.y);
-        if !(moved || resized || placed) {
-            return Err("ウィンドウを動かせません（このウィンドウは位置や大きさを変えられないことがあります）".into());
+        if let Some(element) = &window.element {
+            let moved = element.set_position(target.x, target.y);
+            let resized = element.set_size(target.width, target.height);
+            let placed = element.set_position(target.x, target.y);
+            if moved || resized || placed {
+                return Ok(element.frame().unwrap_or(target));
+            }
+            crate::trace::note("AX could not move the window; falling back to AppleScript");
         }
-        Ok(element.frame().unwrap_or(target))
+        applescript::write(window.pid, target)
+    }
+
+    /// 以前の作り。AX で扱えないときの予備（System Events を通すので遅い。オートメーションの許可を使う）。
+    mod applescript {
+        use super::super::Rect;
+        use super::Command;
+
+        pub fn read(pid: i32) -> Result<Rect, String> {
+            let output = run(&format!(
+                "tell application \"System Events\"
+                    tell first application process whose unix id is {pid}
+                        tell front window
+                            set {{x, y}} to position
+                            set {{w, h}} to size
+                        end tell
+                    end tell
+                end tell
+                return (x as text) & \",\" & (y as text) & \",\" & (w as text) & \",\" & (h as text)"
+            ))?;
+            parse_frame(&output).ok_or_else(|| format!("ウィンドウの位置を読み取れません: {output}"))
+        }
+
+        pub fn write(pid: i32, target: Rect) -> Result<Rect, String> {
+            let output = run(&format!(
+                "tell application \"System Events\"
+                    tell first application process whose unix id is {pid}
+                        tell front window
+                            set {{position, size}} to {{{{{x}, {y}}}, {{{width}, {height}}}}}
+                            set {{x, y}} to position
+                            set {{w, h}} to size
+                        end tell
+                    end tell
+                end tell
+                return (x as text) & \",\" & (y as text) & \",\" & (w as text) & \",\" & (h as text)",
+                x = target.x,
+                y = target.y,
+                width = target.width,
+                height = target.height,
+            ))?;
+            Ok(parse_frame(&output).unwrap_or(target))
+        }
+
+        /// `x,y,width,height` を読む。座標は小数で返ることがあるので丸める。
+        pub(super) fn parse_frame(text: &str) -> Option<Rect> {
+            let values: Vec<i32> = text
+                .trim()
+                .split(',')
+                .map(|value| value.trim().parse::<f64>().ok().map(|v| v.round() as i32))
+                .collect::<Option<_>>()?;
+            match values[..] {
+                [x, y, width, height] => Some(Rect { x, y, width, height }),
+                _ => None,
+            }
+        }
+
+        fn run(script: &str) -> Result<String, String> {
+            let output = Command::new("/usr/bin/osascript")
+                .args(["-e", script])
+                .output()
+                .map_err(|error| format!("ウィンドウ整形を実行できません: {error}"))?;
+            if output.status.success() {
+                Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            } else {
+                Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+            }
+        }
     }
 
     /// 画面の一覧を読み始め、受け取る関数を返す。AppKit に触れるのでメインスレッドで読む。
@@ -601,14 +706,25 @@ mod platform {
     mod tests {
         use super::*;
 
-        /// 実際の最前面のウィンドウを読むだけ（動かさない）。読むのにかかった時間を出す。
-        /// アクセシビリティの許可がある端末で `cargo test -- --ignored --nocapture front_window` と動かす。
+        #[test]
+        fn parses_the_applescript_frame() {
+            assert_eq!(
+                applescript::parse_frame("-1440, -200, 800.4, 600\n"),
+                Some(Rect { x: -1440, y: -200, width: 800, height: 600 })
+            );
+            assert_eq!(applescript::parse_frame("10,20,30"), None);
+            assert_eq!(applescript::parse_frame(""), None);
+        }
+
+        /// あるアプリ（AX_PID）のウィンドウを読むだけ（動かさない）。読むのにかかった時間を出す。
+        /// アクセシビリティの許可がある端末で `AX_PID=<pid> cargo test -- --ignored --nocapture front_window` と動かす。
         #[test]
         #[ignore]
         fn reads_the_front_window_quickly() {
+            let pid = std::env::var("AX_PID").ok().and_then(|pid| pid.parse().ok()).unwrap_or(1);
             for _ in 0..5 {
                 let started = std::time::Instant::now();
-                let result = front_window().map(|window| (window.key, window.frame));
+                let result = ax_front_window(pid).map(|window| (window.key, window.frame));
                 println!("{:?} in {:.1} ms", result, started.elapsed().as_secs_f64() * 1000.0);
             }
         }
@@ -644,7 +760,7 @@ mod platform {
         Ok(to_rect(frame))
     }
 
-    pub fn front_window() -> Result<FrontWindow, String> {
+    pub fn front_window(_app: &AppHandle) -> Result<FrontWindow, String> {
         let handle = unsafe { GetForegroundWindow() };
         if handle.is_null() {
             return Err("操作対象のウィンドウが見つかりません".into());
@@ -729,7 +845,7 @@ mod platform {
 
     const UNSUPPORTED: &str = "このOSではウィンドウ整形を利用できません";
 
-    pub fn front_window() -> Result<FrontWindow, String> {
+    pub fn front_window(_app: &AppHandle) -> Result<FrontWindow, String> {
         Err(UNSUPPORTED.into())
     }
 

@@ -14,3 +14,10 @@ pub fn log(what: &str, started: Instant) {
         eprintln!("[trace] {what}: {:.1} ms", started.elapsed().as_secs_f64() * 1000.0);
     }
 }
+
+/// 時間ではなく、できごと（失敗の理由など）を出す。
+pub fn note(what: &str) {
+    if enabled() {
+        eprintln!("[trace] {what}");
+    }
+}
