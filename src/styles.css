@@ -158,7 +158,7 @@ h1 { margin: 0; font-size: 21px; letter-spacing: -.03em; }
 }
 /* キーボードはポップアップの見た目をそのまま再現するため、白い枠を持たせない。 */
 .keyboard-pane {
-  --key-size: 54px;
+  --key-size: 44px;
   border: 0; background: none; box-shadow: none; overflow: visible;
 }
 .keyboard-pane .pane-heading { padding: 0 4px 8px; border-bottom: 0; }
@@ -172,6 +172,15 @@ h2 { margin: 0; font-size: 15px; }
   flex: 1; padding: 2px; overflow-x: auto; overflow-y: hidden;
   min-height: calc(var(--key-size) * 5 + 28px);
 }
+/* 表盤面と裏盤面を上下に並べる。一覧が出している盤面は枠を強めて示す。 */
+.keyboard-boards { display: grid; gap: 10px; justify-content: start; }
+.keyboard-board {
+  display: grid; gap: 6px; padding: 8px 10px 10px; border: 1px solid transparent; border-radius: 14px;
+  transition: border-color .14s ease, background .14s ease;
+}
+.keyboard-board.active { border-color: rgba(79, 70, 229, .28); background: rgba(255, 255, 255, .35); }
+.board-label { font-size: 11px; font-weight: 700; color: var(--ink-soft); letter-spacing: .02em; }
+.keyboard-board.active .board-label { color: #4f46e5; }
 .items-table { flex: 1; padding: 6px 8px 12px; }
 
 .button-row, .row-actions { display: flex; align-items: center; gap: 8px; }
@@ -552,8 +561,11 @@ button.keyboard-key { cursor: pointer; }
 
 /* 割り当て済みのキーはつかんで別のキーへ運べる。 */
 .keyboard-settings .keyboard-key.assigned:not(.reserved) { cursor: grab; touch-action: none; }
-.keyboard-layout.dragging, .keyboard-layout.dragging .keyboard-key { cursor: grabbing; }
-.keyboard-layout.dragging .keyboard-key:hover { transform: none; }
+.keyboard-layout.dragging, .keyboard-layout.dragging .keyboard-key,
+.dragging .keyboard-layout, .dragging .keyboard-key { cursor: grabbing; }
+.keyboard-layout.dragging .keyboard-key:hover, .dragging .keyboard-key:hover { transform: none; }
+/* 設定画面のキーは、中の画像や文字を選んだり持ち出したりしない（ドラッグの取り合いを防ぐ）。 */
+.keyboard-settings, .keyboard-settings * { -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
 .keyboard-key.drag-source { opacity: .35; }
 .keyboard-key.drop-target {
   z-index: 3; border-color: rgba(79, 70, 229, .9);
@@ -561,7 +573,7 @@ button.keyboard-key { cursor: pointer; }
   transform: translateY(-2px);
 }
 .drag-ghost {
-  position: fixed; top: 0; left: 0; z-index: 100; margin: 0;
+  position: fixed; top: 0; left: 0; z-index: 100; margin: 0; transition: none !important;
   pointer-events: none; opacity: .88;
   box-shadow: 0 12px 28px rgba(23, 33, 58, .3);
 }

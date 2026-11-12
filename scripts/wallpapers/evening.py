@@ -153,7 +153,7 @@ c.line(f"M{tx} {deck_y} L{tx} {deck_y - 52} M{tx - 10} {deck_y} L{tx + 10} {deck
 c.wash(f"M{tx - 26} {deck_y - 62} L{tx + 12} {deck_y - 70} L{tx + 14} {deck_y - 54} L{tx - 24} {deck_y - 48}Z", "#7D8C9C", 0.75, "wcfine")
 c.line(f"M{tx - 26} {deck_y - 62} L{tx + 12} {deck_y - 70} L{tx + 14} {deck_y - 54} L{tx - 24} {deck_y - 48}Z", 1.6, 0.65)
 # 柵にもたれて、夕日を眺める小人（夕日のほう＝左を向く）
-c.kobito(2090, deck_y, 2.6, pose="stand", facing=-1, body="#E6D8C6", visor="#FBF3E6")
+c.kobito(2090, deck_y, 2.6, pose="stand", facing=-1, body="#E6D8C6", visor="#FBF3E6", solid=True)
 
 # --- 手前の草（筆のはらい）---
 for _ in range(30):

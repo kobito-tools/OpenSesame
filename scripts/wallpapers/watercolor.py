@@ -160,10 +160,14 @@ class Canvas:
         """小人。pose は sit（座る）か stand（立つ）。facing は顔の向き（-1 左・0 正面・1 右）。
         solid にすると、暗い背景でも透けないよう、下に不透明な地を一度塗る。"""
         ox, oy = cx - 24 * s, base - (42 if pose == "sit" else 48) * s
-        shift = 4 * facing
         egg = "M10 23C10 11 16 5 25 5c8 0 13 6 13 16 0 11-6 16-15 16-8 0-13-5-13-14Z"
-        vis = f"M{15 + shift} 13c5-4 13-4 18 0v12c-5 4-13 4-18 0Z" if facing == 0 else \
-            f"M{15 + shift} 14c4-3 11-3 15 0v10c-4 3-11 3-15 0Z"
+        # 顔の枠・目・口は同じ中心にそろえる。横を向くときは中心を向きのほうへ寄せ、枠と目の間隔を狭める。
+        if facing == 0:
+            face, half, eye = 24.0, 9.0, 3.5
+            vis = "M15 13c5-4 13-4 18 0v12c-5 4-13 4-18 0Z"
+        else:
+            face, half, eye = 24.0 + 4.5 * facing, 7.5, 3.0
+            vis = f"M{face - half:.1f} 14c4-3 11-3 15 0v10c-4 3-11 3-15 0Z"
         if pose == "sit":
             limbs = ["M19.5 36 Q15 40 10.5 41", "M28.5 36 Q33 40 37.5 41",
                      "M11.5 26 Q14 30 17.5 30", "M37 25 Q35 30 30.5 30.5"]
@@ -178,12 +182,12 @@ class Canvas:
         if accent:
             self.add(f'<path d="M17 26.5 L29 25 L30 33 L18 34.5Z" fill="{accent}" opacity=".85" filter="url(#wck)"/>')
         sw = 2.6 / s
-        mouth = f"M{22.6 + shift} 21.4c1.5 2 3.3 2 4.8 0"
+        mouth = f"M{face - 2.2:.1f} 21.4c1.3 1.9 3.1 1.9 4.4 0"
         for d in [egg, vis, mouth, *limbs] + (["M17 26.5 L29 25 L30 33 L18 34.5Z"] if accent else []):
             self.add(f'<path d="{d}" fill="none" stroke="{self.pencil}" stroke-width="{sw:.3f}" stroke-linecap="round" '
                      f'stroke-linejoin="round" opacity=".75" filter="url(#pencilk)"/>')
-        self.add(f'<circle cx="{21 + shift}" cy="17.5" r="1.1" fill="{self.pencil}" opacity=".85"/>'
-                 f'<circle cx="{28 + shift}" cy="17.5" r="1.1" fill="{self.pencil}" opacity=".85"/>')
+        self.add(f'<circle cx="{face - eye:.1f}" cy="17.5" r="1.1" fill="{self.pencil}" opacity=".85"/>'
+                 f'<circle cx="{face + eye:.1f}" cy="17.5" r="1.1" fill="{self.pencil}" opacity=".85"/>')
         self.add('</g>')
 
     def paper(self):
