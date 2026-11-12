@@ -416,18 +416,19 @@ h2 { margin: 0; font-size: 15px; }
   background: linear-gradient(145deg, #818cf8, #4f46e5);
 }
 
-/* 行ごとに少し遅らせて、下から順に浮き上がらせる。 */
+/* 出した瞬間から読めるよう、半分見えた状態から短く浮き上がらせる（行ごとのずれも小さく）。
+   以前の 0.34 秒＋行ごとに 34ms のずれでは、最後の行が見えるまで約 0.5 秒かかり、反応が遅く感じられた。 */
 .launcher-panel.rise .keyboard-key {
-  animation: key-rise .34s cubic-bezier(.22, 1, .36, 1) both;
-  animation-delay: calc(var(--row, 0) * 34ms);
+  animation: key-rise .12s cubic-bezier(.22, 1, .36, 1) both;
+  animation-delay: calc(var(--row, 0) * 8ms);
 }
 @keyframes key-rise {
-  from { opacity: 0; transform: translateY(16px) scale(.97); }
+  from { opacity: .5; transform: translateY(5px); }
   to { opacity: 1; transform: none; }
 }
-/* 小人はキーが並び終わる頃に、少し跳ねて出てくる。 */
+/* 小人はキーに続いて、少し跳ねて出てくる。 */
 .launcher-panel.rise .kobito-popup {
-  animation: kobito-hop .42s cubic-bezier(.34, 1.56, .64, 1) 150ms both;
+  animation: kobito-hop .26s cubic-bezier(.34, 1.56, .64, 1) 40ms both;
 }
 @keyframes kobito-hop {
   from { opacity: 0; transform: translateY(18px) scale(.9); }
@@ -602,7 +603,7 @@ button.keyboard-key { cursor: pointer; }
   padding: 1px 9px; border-radius: 99px; line-height: 12px;
   color: #92400e; background: rgba(251, 191, 36, .35); font-size: 9px; font-weight: 750;
 }
-.launcher-panel.flip .keyboard-layout { animation: board-flip .2s ease-out both; }
+.launcher-panel.flip .keyboard-layout { animation: board-flip .14s ease-out both; }
 @keyframes board-flip {
   from { opacity: .35; transform: perspective(900px) rotateX(-14deg); }
   to { opacity: 1; transform: none; }

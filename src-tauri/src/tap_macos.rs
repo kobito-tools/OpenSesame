@@ -5,6 +5,10 @@
 //! 必ずSIGTRAPになる。表記は使わないので、CGEventTapを自前で張って回避する。
 //! 併せて、タップがOSに無効化されたときの復帰も行う。
 //!
+//! タップは専用のスレッドの実行ループに置く。メインスレッドに置くと、設定画面やパネルの描画で
+//! メインスレッドが忙しい間、Mac 全体のキー入力がタップの順番待ちで遅れるため。
+//! コールバックは AppKit に触れない（パネルの操作は popup のスレッド経由でメインスレッドへ送る）。
+//!
 //! 無効化の通知を受けて即座に張り直すのはタイムアウトのときだけにする。
 //! 権限の取り消しなどで切られたときに張り直すと、すぐまた切られて通知が届き、
 //! メインスレッドが止まらなくなる。そちらは監視スレッドが間隔を空けて復帰させる。
@@ -14,7 +18,9 @@ use std::{
     cell::RefCell,
     ffi::c_void,
     ptr,
-    sync::{Arc, Mutex},
+    sync::{mpsc, Arc, Mutex},
+    thread,
+    time::Duration,
 };
 
 type CFRef = *const c_void;
@@ -43,7 +49,8 @@ extern "C" {
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
     fn CFMachPortCreateRunLoopSource(allocator: CFRef, port: CFRef, order: isize) -> CFRef;
-    fn CFRunLoopGetMain() -> CFRef;
+    fn CFRunLoopGetCurrent() -> CFRef;
+    fn CFRunLoopRun();
     fn CFRunLoopAddSource(run_loop: CFRef, source: CFRef, mode: CFRef);
     fn CFRelease(cf: CFRef);
     static kCFRunLoopCommonModes: CFRef;
@@ -66,7 +73,7 @@ const SOURCE_STATE_HID_SYSTEM: i32 = 1;
 /// macOSのキーコードの上限（kVK_*は0x7F以下）。
 const MAX_KEYCODE: i64 = 0x7F;
 
-/// タップの寿命はアプリと同じなので、メインスレッドに置いたまま解放しない。
+/// タップの寿命はアプリと同じなので、タップのスレッドに置いたまま解放しない。
 struct TapContext {
     machine: Arc<Mutex<Machine>>,
     tap: RefCell<CFRef>,
@@ -179,8 +186,38 @@ impl Tap {
     }
 }
 
-/// メインスレッドで呼ぶこと。成功すると以降のキーイベントがコールバックへ届く。
+#[link(name = "System")]
+extern "C" {
+    fn pthread_set_qos_class_self_np(qos_class: u32, relative_priority: i32) -> i32;
+}
+
+/// 利用者の操作にすぐ応える仕事の優先度（QOS_CLASS_USER_INTERACTIVE）。
+const QOS_CLASS_USER_INTERACTIVE: u32 = 0x21;
+
+/// タップ専用のスレッドを立て、そこでタップを張る。成功すると以降のキーイベントがコールバックへ届く。
+/// どのスレッドから呼んでもよい。
 pub fn install(machine: Arc<Mutex<Machine>>) -> Result<Tap, String> {
+    let (sender, receiver) = mpsc::channel();
+    thread::Builder::new()
+        .name("opensesame-keys".into())
+        .spawn(move || {
+            unsafe { pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0) };
+            let installed = install_here(machine);
+            let ok = installed.is_ok();
+            let _ = sender.send(installed);
+            if ok {
+                // このスレッドの実行ループを回し続ける（アプリが終わるまで戻らない）。
+                unsafe { CFRunLoopRun() };
+            }
+        })
+        .map_err(|error| error.to_string())?;
+    receiver
+        .recv_timeout(Duration::from_secs(10))
+        .map_err(|_| "the key thread did not respond".to_string())?
+}
+
+/// 呼んだスレッドの実行ループにタップを張る。
+fn install_here(machine: Arc<Mutex<Machine>>) -> Result<Tap, String> {
     let context = Box::into_raw(Box::new(TapContext {
         machine,
         tap: RefCell::new(ptr::null()),
@@ -212,11 +249,10 @@ pub fn install(machine: Arc<Mutex<Machine>>) -> Result<Tap, String> {
         return Err("run loop source could not be created".into());
     }
 
-    // アプリのメインループにぶら下げる。コールバックもメインスレッドで動くので、
-    // ウィンドウ操作を含めてAppKitに触れても安全になる。
+    // 呼んだスレッド（タップ専用）の実行ループにぶら下げる。
     unsafe {
         (*context).tap.replace(tap);
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, kCFRunLoopCommonModes);
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
         CGEventTapEnable(tap, true);
         CFRelease(source);
     }
