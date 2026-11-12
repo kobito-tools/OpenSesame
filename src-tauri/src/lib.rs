@@ -694,6 +694,10 @@ const MAX_DISPLAY_MODES: usize = 8;
 
 fn check_display_setting(setting: Option<&DisplaySetting>) -> Result<(), String> {
     let valid = setting.is_some_and(|setting| {
+        // 1段階上げ下げは、決まった解像度を持たない。
+        if setting.step.is_some() {
+            return setting.modes.is_empty();
+        }
         (1..=MAX_DISPLAY_MODES).contains(&setting.modes.len())
             && setting.modes.iter().all(|mode| {
                 mode.width > 0
@@ -1453,6 +1457,7 @@ mod tests {
                 name: "Studio Display".into(),
             },
             modes,
+            step: None,
         });
         item
     }
@@ -1479,6 +1484,12 @@ mod tests {
         let mut missing = display_item("d", "KeyD", vec![mode(2560, 1440, 0.0)]);
         missing.display = None;
         assert_eq!(check_item(&missing).unwrap_err(), invalid);
+        // 1段階上げ下げは、解像度を持たないときだけ正しい。
+        let mut step = display_item("d", "KeyD", vec![]);
+        step.display.as_mut().unwrap().step = Some(model::DisplayStep::Up);
+        assert!(check_item(&step).is_ok());
+        step.display.as_mut().unwrap().modes.push(mode(2560, 1440, 0.0));
+        assert_eq!(check_item(&step).unwrap_err(), invalid);
         // つながっていない画面でも登録はできる（押したときに知らせる）。
         let mut config = LauncherConfig::default();
         config.items.push(display_item("d", "KeyD", vec![mode(2560, 1440, 0.0)]));

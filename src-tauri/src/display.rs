@@ -1,7 +1,7 @@
 //! 画面の解像度を変える。macOS は CoreGraphics の表示モードを直接使う。
 //! 一覧づくりや画面・モードの探し方は OS に触れない関数に分け、テストできるようにしている。
 
-use crate::model::{DisplayModeRef, DisplaySetting, ScreenRef};
+use crate::model::{DisplayModeRef, DisplaySetting, DisplayStep, ScreenRef};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use tauri::AppHandle;
@@ -251,6 +251,29 @@ pub fn next_mode<'a>(
     }
 }
 
+/// 1段階隣の解像度。段階は設定画面のまとめた一覧（`summary_options`）と同じ並びで、`Up` は大きい方。
+/// いまの解像度が一覧に無ければ（縦横比の違うモードなど）、面積が次に大きい・小さいもの。端なら None。
+pub fn step_mode(
+    modes: &[RawMode],
+    current: Option<&RawMode>,
+    step: DisplayStep,
+) -> Option<DisplayModeRef> {
+    let current = current?;
+    // 大きい順に並んでいる。
+    let options = summary_options(modes, Some(current));
+    let area = |mode: &DisplayModeRef| u64::from(mode.width) * u64::from(mode.height);
+    let now = u64::from(current.width) * u64::from(current.height);
+    let index = match (options.iter().position(|option| option.current), step) {
+        (Some(index), DisplayStep::Up) => index.checked_sub(1),
+        (Some(index), DisplayStep::Down) => Some(index + 1),
+        (None, DisplayStep::Up) => options.iter().rposition(|option| area(&option.mode) > now),
+        (None, DisplayStep::Down) => options.iter().position(|option| area(&option.mode) < now),
+    };
+    index
+        .and_then(|index| options.get(index))
+        .map(|option| option.mode.clone())
+}
+
 /// 知らせに出すモードの書き方（例: `1920×1080`）。
 pub fn mode_label(mode: &DisplayModeRef) -> String {
     if mode.refresh > 0.0 {
@@ -272,8 +295,10 @@ pub fn apply(app: &AppHandle, setting: &DisplaySetting) -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 pub(crate) mod platform {
-    use super::{find_screen, mode_label, next_mode, pick_mode, DisplayInfo, RawMode, ScreenInfo};
-    use crate::model::{DisplaySetting, ScreenRef};
+    use super::{
+        find_screen, mode_label, next_mode, pick_mode, step_mode, DisplayInfo, RawMode, ScreenInfo,
+    };
+    use crate::model::{DisplayModeRef, DisplaySetting, DisplayStep, ScreenRef};
     use objc2::MainThreadMarker;
     use objc2_app_kit::NSScreen;
     use objc2_foundation::{NSNumber, NSString};
@@ -534,19 +559,33 @@ pub(crate) mod platform {
             return Err(crate::error("display-not-found", &setting.screen.name));
         };
         let current = current_mode(info.id);
-        let Some(target) = next_mode(&setting.modes, current.as_ref()) else {
-            return Err(crate::error("invalid-display-setting", ""));
-        };
-        let missing = || {
-            crate::error(
-                "display-mode-missing",
-                &format!("{} {}", info.screen.name, mode_label(target)),
-            )
-        };
-        let list = ModeList::copy(info.id).ok_or_else(missing)?;
+        let list = ModeList::copy(info.id)
+            .ok_or_else(|| crate::error("display-mode-missing", &info.screen.name))?;
         let refs = list.refs();
         let raw: Vec<RawMode> = refs.iter().map(|&mode| read_mode(mode)).collect();
-        let index = pick_mode(target, &raw).ok_or_else(missing)?;
+        let target: DisplayModeRef = match setting.step {
+            // 端で押したときは何も変えず、いまの解像度を添えて知らせる。
+            Some(step) => step_mode(&raw, current.as_ref(), step).ok_or_else(|| {
+                let code = match step {
+                    DisplayStep::Up => "display-step-highest",
+                    DisplayStep::Down => "display-step-lowest",
+                };
+                let now = current
+                    .as_ref()
+                    .map(|mode| mode_label(&mode.as_ref(0.0)))
+                    .unwrap_or_default();
+                crate::error(code, &format!("{} {}", info.screen.name, now))
+            })?,
+            None => next_mode(&setting.modes, current.as_ref())
+                .cloned()
+                .ok_or_else(|| crate::error("invalid-display-setting", ""))?,
+        };
+        let index = pick_mode(&target, &raw).ok_or_else(|| {
+            crate::error(
+                "display-mode-missing",
+                &format!("{} {}", info.screen.name, mode_label(&target)),
+            )
+        })?;
         unsafe {
             let mut config: CGDisplayConfigRef = std::ptr::null_mut();
             let status = CGBeginDisplayConfiguration(&mut config);
@@ -778,6 +817,50 @@ mod tests {
                 detailed_options(&raw, current.as_ref()).len()
             );
         }
+    }
+
+    #[test]
+    fn steps_to_the_neighbouring_resolution_in_the_summary() {
+        // 大きい順に 1800, 1512（現在）, 1352, 1024。縦横比の違う 1024×640 は段階に入らない。
+        let modes = vec![
+            raw(1800, 1169, 2, 120.0),
+            raw(1512, 982, 2, 120.0),
+            raw(1512, 982, 1, 60.0),
+            raw(1352, 878, 2, 120.0),
+            raw(1024, 665, 2, 120.0),
+            raw(1024, 640, 2, 120.0),
+        ];
+        let now = raw(1512, 982, 2, 120.0);
+        let size = |mode: Option<DisplayModeRef>| mode.map(|m| (m.width, m.pixel_width, m.refresh));
+        assert_eq!(
+            size(step_mode(&modes, Some(&now), DisplayStep::Up)),
+            Some((1800, 3600, 0.0))
+        );
+        assert_eq!(
+            size(step_mode(&modes, Some(&now), DisplayStep::Down)),
+            Some((1352, 2704, 0.0))
+        );
+        // 端では変えない。
+        let largest = raw(1800, 1169, 2, 120.0);
+        let smallest = raw(1024, 665, 2, 120.0);
+        assert_eq!(step_mode(&modes, Some(&largest), DisplayStep::Up), None);
+        assert_eq!(step_mode(&modes, Some(&smallest), DisplayStep::Down), None);
+        assert_eq!(step_mode(&modes, None, DisplayStep::Up), None);
+    }
+
+    #[test]
+    fn steps_from_a_mode_outside_the_summary_by_area() {
+        let modes = vec![
+            raw(1800, 1169, 2, 120.0),
+            raw(1512, 982, 2, 120.0),
+            raw(1024, 665, 2, 120.0),
+            raw(1280, 800, 2, 60.0),
+        ];
+        // 縦横比の違う 1280×800（面積 1,024,000）は、まとめた一覧に無い。
+        let odd = raw(1280, 800, 2, 60.0);
+        let width = |mode: Option<DisplayModeRef>| mode.map(|m| m.width);
+        assert_eq!(width(step_mode(&modes, Some(&odd), DisplayStep::Up)), Some(1512));
+        assert_eq!(width(step_mode(&modes, Some(&odd), DisplayStep::Down)), Some(1024));
     }
 
     #[test]

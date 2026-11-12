@@ -94,10 +94,22 @@ pub struct DisplayModeRef {
 }
 
 /// 解像度の切り替え。`modes` が2つ以上なら、押すたびに次のモードへ巡回する。
+/// `step` があれば `modes` は空で、押したときの解像度から1段階隣へ変える（`display::step_mode`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DisplaySetting {
     pub screen: ScreenRef,
+    #[serde(default)]
     pub modes: Vec<DisplayModeRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<DisplayStep>,
+}
+
+/// 解像度を1段階変える向き。`Up` は大きい解像度（文字が小さく、作業領域が広い）の方。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DisplayStep {
+    Up,
+    Down,
 }
 
 /// 壁紙の対象と表示の仕方。`screen` が無ければすべての画面。

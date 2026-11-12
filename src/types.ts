@@ -44,10 +44,17 @@ export interface DisplayModeRef {
   refresh: number;
 }
 
-/** 解像度の切り替え。`modes` が2つ以上なら、押すたびに順に切り替える。 */
+/** 解像度を1段階変える向き。`up` は大きい解像度（文字が小さく、作業領域が広い）の方。 */
+export type DisplayStep = "up" | "down";
+
+/**
+ * 解像度の切り替え。`modes` が2つ以上なら、押すたびに順に切り替える。
+ * `step` があれば `modes` は空で、押したときの解像度から1段階隣へ変える。
+ */
 export interface DisplaySetting {
   screen: ScreenRef;
   modes: DisplayModeRef[];
+  step?: DisplayStep;
 }
 
 export type WallpaperFit = "fill" | "fit" | "stretch" | "center";
