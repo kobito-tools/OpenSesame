@@ -10,7 +10,7 @@ OpenSesame! は、キーを押している間だけ表示される macOS 用の�
 
 小さな Mac 向けアプリのシリーズ [kobito-tools](https://github.com/kobito-tools) の1つです。
 
-![デモ](docs/images/demo.gif)
+![デモ](docs/images/demo.ja.gif)
 
 ## できること
 

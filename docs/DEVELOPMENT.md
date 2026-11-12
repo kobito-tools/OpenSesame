@@ -17,6 +17,8 @@ OpenSesame! の中身の構造、ビルド方法、配布手順をまとめて�
 ├── setup.sh                   # 初期設定（macOS）。共通の手順 docs/kobito-spec/setup.zsh を読み込む
 ├── build.sh                   # 手元で使う OpenSesame!.app を作る（macOS）
 ├── scripts/make-icons.sh      # kobito/icon.svg から、icon-1024.png と src-tauri/icons/ を作り直す
+├── scripts/social-preview.sh  # GitHub の紹介画像（assets/social-preview.png・.ja.png）を作り直す
+├── assets/                    # GitHub の紹介画像（英語版 social-preview.png・日本語版 social-preview.ja.png）
 ├── index.html                 # 設定画面・ポップアップ共通のエントリ
 ├── src/                       # フロントエンド
 │   ├── main.ts                # ウィンドウのラベルで設定画面かポップアップかを振り分け
@@ -68,7 +70,7 @@ npm run tauri dev
 npm run tauri build
 ```
 
-手元で使う `.app` だけを作る場合（macOS）は、`./build.sh` を実行します。`npm ci` と `tauri build --bundles app` を行い、このフォルダ直下に `OpenSesame!.app` を置きます。ソースから使う人向けの入口は `setup.sh` です（道具の確かめ・ビルド・アプリケーションフォルダの `kobito-tools` フォルダへ移すかの確認・起動情報の書き出し・PC 固有領域の `repos/` へのリンク・許可と起動の案内。`--yes`・`--dry-run`・`--help` を受け付けます）。引数の読み方・表示・尋ね方は、シリーズ共通の `docs/kobito-spec/setup.zsh` を読み込んで使います。利用者には、ターミナルで `./setup.sh` を動かしてもらいます（Finder からダブルクリックで動かす `.command` の入口は、macOS のセキュリティで止められるため置いていません）。置き先のフォルダの用意（無ければ作ってアイコンを付ける・アイコンの無いフォルダなら止まる）と `repos/` へのリンクは、共通の部品（`kobito_applications_folder`・`kobito_link_repository`）が行います。`/Applications` の直下に残っている古い `.app` には触りません。試すときは `KOBITO_APPLICATIONS_DIR`・`KOBITO_CONFIG_DIR` に一時フォルダを指すと、実際のアプリケーションフォルダと PC 固有領域に触れません。
+手元で使う `.app` だけを作る場合（macOS）は、`./build.sh` を実行します。`npm ci`・画面のビルド（`npm run build`）・`tauri build --bundles app` を順に行い、このフォルダ直下に `OpenSesame!.app` を置きます。進み具合は「`[1/4] …: done in 12s`」のように段階ごとに1行で出し、時間のかかる段階はターミナルなら同じ行で経過秒数を書き換えます。npm と cargo の長い出力は、失敗したときだけ終わりの60行を見せ、全部は一時ファイルに残します。ソースから使う人向けの入口は `setup.sh` です（道具の確かめ・ビルド・アプリケーションフォルダの `kobito-tools` フォルダへ移すかの確認・起動情報の書き出し・PC 固有領域の `repos/` へのリンク・許可と起動の案内。`--yes`・`--dry-run`・`--help` を受け付けます）。引数の読み方・表示・尋ね方は、シリーズ共通の `docs/kobito-spec/setup.zsh` を読み込んで使います。利用者には、ターミナルで `./setup.sh` を動かしてもらいます（Finder からダブルクリックで動かす `.command` の入口は、macOS のセキュリティで止められるため置いていません）。置き先のフォルダの用意（無ければ作ってアイコンを付ける・アイコンの無いフォルダなら止まる）と `repos/` へのリンクは、共通の部品（`kobito_applications_folder`・`kobito_link_repository`）が行います。`/Applications` の直下に残っている古い `.app` には触りません。試すときは `KOBITO_APPLICATIONS_DIR`・`KOBITO_CONFIG_DIR` に一時フォルダを指すと、実際のアプリケーションフォルダと PC 固有領域に触れません。
 
 テスト:
 
@@ -108,6 +110,21 @@ macOS版は `bundle.macOS.signingIdentity` に `-` を指定し、ad-hoc 署名�
 ```
 
 `tauri icon` で、`kobito/icon-1024.png`（1024×1024）と、`tauri.conf.json` の `bundle.icon` に載せている `src-tauri/icons/` の画像（`32x32.png`・`128x128.png`・`128x128@2x.png`・`icon.icns`・`icon.ico`）を作り直します。Android / iOS / Windowsストア向けの画像は写しません。`bundle.icon` には `.icns` と `.ico` を必ず含めてください。PNGだけを指定すると1サイズのみの `.icns` が生成され、Finderがアイコンを描けません。
+
+## 紹介画像
+
+GitHub のリポジトリの紹介画像（Social preview、1280×640）を、英語版と日本語版の2枚で持っています。
+
+| ファイル | 中身 |
+|---|---|
+| `assets/social-preview.png` | 英語版。GitHub の Settings → Social preview に載せる |
+| `assets/social-preview.ja.png` | 日本語版 |
+
+アイコンや説明を変えたら、次で2枚とも作り直します（Google Chrome と Noto Sans JP のフォントファイルを使います）。
+
+```bash
+./scripts/social-preview.sh <NotoSansJP.ttf のパス>
+```
 
 ## データ保存先
 
