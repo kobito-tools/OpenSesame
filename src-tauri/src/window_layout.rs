@@ -343,6 +343,8 @@ static HISTORY: Mutex<History> = Mutex::new(History::new());
 struct FrontWindow {
     key: String,
     frame: Rect,
+    #[cfg(target_os = "macos")]
+    element: platform::AxElement,
     #[cfg(windows)]
     handle: windows_sys::Win32::Foundation::HWND,
 }
@@ -350,6 +352,16 @@ struct FrontWindow {
 /// バックグラウンドスレッドから呼ぶこと。
 #[cfg_attr(not(any(target_os = "macos", windows)), allow(unused_variables, unreachable_code))]
 pub fn apply(app: &AppHandle, action: &str) -> Result<(), String> {
+    let started = std::time::Instant::now();
+    let result = apply_now(app, action);
+    crate::trace::log(&format!("window layout {action}"), started);
+    result
+}
+
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(unused_variables, unreachable_code))]
+fn apply_now(app: &AppHandle, action: &str) -> Result<(), String> {
+    // 画面の一覧はメインスレッドで読むので、先に頼んでおき、ウィンドウを読む間に用意させる。
+    let screens = platform::screens_later(app);
     let front = platform::front_window()?;
     if action == RESTORE {
         let original = HISTORY
@@ -360,7 +372,7 @@ pub fn apply(app: &AppHandle, action: &str) -> Result<(), String> {
         platform::set_frame(&front, original)?;
         return Ok(());
     }
-    let screens = platform::screens(app)?;
+    let screens = screens()?;
     let target = plan(action, front.frame, &screens)?;
     let actual = platform::set_frame(&front, target)?;
     if let Ok(mut history) = HISTORY.lock() {
@@ -371,105 +383,187 @@ pub fn apply(app: &AppHandle, action: &str) -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 mod platform {
+    //! macOS はアクセシビリティ API（AXUIElement）で、最前面のウィンドウを直接読み書きする。
+    //! 以前は osascript と System Events を2回ずつ呼んでいて、1回の整形に 0.4〜0.9 秒かかっていた。
+    //! キーの監視と同じアクセシビリティの許可で動き、System Events を操る許可は要らない。
     use super::{flip_to_top_left, FrontWindow, Rect, Screen};
     use objc2::MainThreadMarker;
     use objc2_app_kit::NSScreen;
-    use std::{process::Command, sync::mpsc, time::Duration};
+    use objc2_foundation::NSString;
+    use std::{ffi::c_void, sync::mpsc, time::Duration};
     use tauri::AppHandle;
 
-    /// 最前面のアプリのプロセスIDと、その前面ウィンドウの位置・大きさを読む。
+    type CFTypeRef = *const c_void;
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct CGPoint {
+        x: f64,
+        y: f64,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    struct CGSize {
+        width: f64,
+        height: f64,
+    }
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        fn AXUIElementCreateSystemWide() -> CFTypeRef;
+        fn AXUIElementCreateApplication(pid: i32) -> CFTypeRef;
+        fn AXUIElementCopyAttributeValue(element: CFTypeRef, attribute: CFTypeRef, value: *mut CFTypeRef) -> i32;
+        fn AXUIElementSetAttributeValue(element: CFTypeRef, attribute: CFTypeRef, value: CFTypeRef) -> i32;
+        fn AXUIElementSetMessagingTimeout(element: CFTypeRef, seconds: f32) -> i32;
+        fn AXUIElementGetPid(element: CFTypeRef, pid: *mut i32) -> i32;
+        fn AXValueCreate(kind: u32, value: *const c_void) -> CFTypeRef;
+        fn AXValueGetValue(value: CFTypeRef, kind: u32, out: *mut c_void) -> bool;
+    }
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFRelease(object: CFTypeRef);
+        fn CFHash(object: CFTypeRef) -> usize;
+    }
+
+    const AX_SUCCESS: i32 = 0;
+    const AX_VALUE_CG_POINT: u32 = 1;
+    const AX_VALUE_CG_SIZE: u32 = 2;
+    /// 応答しないアプリで待ち続けないよう、1回の問い合わせを短く打ち切る。
+    const MESSAGING_TIMEOUT: f32 = 0.5;
+
+    /// AX の要素。持ち主として、最後に解放する。
+    pub struct AxElement(CFTypeRef);
+
+    // SAFETY: AXUIElement はスレッドを問わず使える CF オブジェクトで、ここでは1つのスレッドからしか触らない。
+    unsafe impl Send for AxElement {}
+
+    impl Drop for AxElement {
+        fn drop(&mut self) {
+            unsafe { CFRelease(self.0) }
+        }
+    }
+
+    impl AxElement {
+        fn new(raw: CFTypeRef) -> Option<Self> {
+            (!raw.is_null()).then_some(Self(raw))
+        }
+
+        fn copy(&self, attribute: &str) -> Option<AxElement> {
+            let name = NSString::from_str(attribute);
+            let mut value: CFTypeRef = std::ptr::null();
+            let status = unsafe {
+                AXUIElementCopyAttributeValue(self.0, (&*name as *const NSString).cast(), &mut value)
+            };
+            if status == AX_SUCCESS {
+                AxElement::new(value)
+            } else {
+                None
+            }
+        }
+
+        fn set(&self, attribute: &str, value: &AxElement) -> bool {
+            let name = NSString::from_str(attribute);
+            unsafe {
+                AXUIElementSetAttributeValue(self.0, (&*name as *const NSString).cast(), value.0) == AX_SUCCESS
+            }
+        }
+
+        fn point(&self, attribute: &str) -> Option<CGPoint> {
+            let value = self.copy(attribute)?;
+            let mut point = CGPoint::default();
+            unsafe { AXValueGetValue(value.0, AX_VALUE_CG_POINT, (&mut point as *mut CGPoint).cast()) }
+                .then_some(point)
+        }
+
+        fn size(&self, attribute: &str) -> Option<CGSize> {
+            let value = self.copy(attribute)?;
+            let mut size = CGSize::default();
+            unsafe { AXValueGetValue(value.0, AX_VALUE_CG_SIZE, (&mut size as *mut CGSize).cast()) }
+                .then_some(size)
+        }
+
+        fn frame(&self) -> Option<Rect> {
+            let origin = self.point("AXPosition")?;
+            let size = self.size("AXSize")?;
+            Some(Rect {
+                x: origin.x.round() as i32,
+                y: origin.y.round() as i32,
+                width: size.width.round() as i32,
+                height: size.height.round() as i32,
+            })
+        }
+
+        fn set_position(&self, x: i32, y: i32) -> bool {
+            let point = CGPoint { x: f64::from(x), y: f64::from(y) };
+            AxElement::new(unsafe { AXValueCreate(AX_VALUE_CG_POINT, (&point as *const CGPoint).cast()) })
+                .is_some_and(|value| self.set("AXPosition", &value))
+        }
+
+        fn set_size(&self, width: i32, height: i32) -> bool {
+            let size = CGSize { width: f64::from(width), height: f64::from(height) };
+            AxElement::new(unsafe { AXValueCreate(AX_VALUE_CG_SIZE, (&size as *const CGSize).cast()) })
+                .is_some_and(|value| self.set("AXSize", &value))
+        }
+    }
+
+    /// 最前面のアプリの、操作対象のウィンドウ（フォーカスのあるもの、無ければメインのもの）。
     pub fn front_window() -> Result<FrontWindow, String> {
-        let output = run(
-            "tell application \"System Events\"
-                tell first application process whose frontmost is true
-                    set processId to unix id
-                    tell front window
-                        set {x, y} to position
-                        set {w, h} to size
-                    end tell
-                end tell
-            end tell
-            return (processId as text) & \",\" & (x as text) & \",\" & (y as text) & \",\" & (w as text) & \",\" & (h as text)",
-        )?;
-        let (pid, frame) = parse_window(&output)
-            .ok_or_else(|| format!("ウィンドウの位置を読み取れません: {output}"))?;
-        Ok(FrontWindow {
-            key: pid.to_string(),
-            frame,
-        })
+        let not_found = || "操作対象のウィンドウが見つかりません".to_string();
+        let system = AxElement::new(unsafe { AXUIElementCreateSystemWide() }).ok_or_else(not_found)?;
+        unsafe { AXUIElementSetMessagingTimeout(system.0, MESSAGING_TIMEOUT) };
+        let focused = system.copy("AXFocusedApplication").ok_or_else(not_found)?;
+        let mut pid = 0;
+        if unsafe { AXUIElementGetPid(focused.0, &mut pid) } != AX_SUCCESS {
+            return Err(not_found());
+        }
+        // 取り出したアプリの要素とは別に、PID から作り直して問い合わせの待ち時間を決める。
+        let application = AxElement::new(unsafe { AXUIElementCreateApplication(pid) }).ok_or_else(not_found)?;
+        unsafe { AXUIElementSetMessagingTimeout(application.0, MESSAGING_TIMEOUT) };
+        let window = application
+            .copy("AXFocusedWindow")
+            .or_else(|| application.copy("AXMainWindow"))
+            .ok_or_else(not_found)?;
+        let frame = window
+            .frame()
+            .ok_or_else(|| "ウィンドウの位置を読み取れません".to_string())?;
+        // 同じアプリの別のウィンドウを見分けられるよう、PID と要素のハッシュを組にする。
+        let key = format!("{pid}:{:x}", unsafe { CFHash(window.0) });
+        Ok(FrontWindow { key, frame, element: window })
     }
 
     /// 位置と大きさを変え、アプリが実際に受け入れた位置と大きさを返す
     /// （最小の大きさや文字単位の大きさに合わせて、アプリが値を変えることがある）。
+    /// 別の画面へ移すときは大きさが画面に縛られるので、位置 → 大きさ → 位置の順に置く。
     pub fn set_frame(window: &FrontWindow, target: Rect) -> Result<Rect, String> {
-        let output = run(&format!(
-            "tell application \"System Events\"
-                tell first application process whose unix id is {pid}
-                    tell front window
-                        set {{position, size}} to {{{{{x}, {y}}}, {{{width}, {height}}}}}
-                        set {{x, y}} to position
-                        set {{w, h}} to size
-                    end tell
-                end tell
-            end tell
-            return \"0,\" & (x as text) & \",\" & (y as text) & \",\" & (w as text) & \",\" & (h as text)",
-            pid = window.key,
-            x = target.x,
-            y = target.y,
-            width = target.width,
-            height = target.height,
-        ))?;
-        Ok(parse_window(&output).map_or(target, |(_, frame)| frame))
-    }
-
-    /// `pid,x,y,width,height` を読む。座標は小数で返ることがあるので丸める。
-    fn parse_window(text: &str) -> Option<(i64, Rect)> {
-        let values: Vec<i64> = text
-            .trim()
-            .split(',')
-            .map(|value| value.trim().parse::<f64>().ok().map(|v| v.round() as i64))
-            .collect::<Option<_>>()?;
-        match values[..] {
-            [pid, x, y, width, height] => Some((
-                pid,
-                Rect {
-                    x: x as i32,
-                    y: y as i32,
-                    width: width as i32,
-                    height: height as i32,
-                },
-            )),
-            _ => None,
+        let element = &window.element;
+        let moved = element.set_position(target.x, target.y);
+        let resized = element.set_size(target.width, target.height);
+        let placed = element.set_position(target.x, target.y);
+        if !(moved || resized || placed) {
+            return Err("ウィンドウを動かせません（このウィンドウは位置や大きさを変えられないことがあります）".into());
         }
+        Ok(element.frame().unwrap_or(target))
     }
 
-    fn run(script: &str) -> Result<String, String> {
-        let output = Command::new("/usr/bin/osascript")
-            .args(["-e", script])
-            .output()
-            .map_err(|error| format!("ウィンドウ整形を実行できません: {error}"))?;
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
-        } else {
-            Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
-        }
-    }
-
-    /// ディスプレイの照会はAppKitに触れるのでメインスレッドへ回す。
-    pub fn screens(app: &AppHandle) -> Result<Vec<Screen>, String> {
+    /// 画面の一覧を読み始め、受け取る関数を返す。AppKit に触れるのでメインスレッドで読む。
+    /// ウィンドウを読むのと並べて待つことで、待ち時間を重ねる。
+    pub fn screens_later(app: &AppHandle) -> Box<dyn FnOnce() -> Result<Vec<Screen>, String> + Send> {
         let (sender, receiver) = mpsc::channel();
-        app.run_on_main_thread(move || {
+        let requested = app.run_on_main_thread(move || {
             let _ = sender.send(screens_on_main_thread());
+        });
+        Box::new(move || {
+            let failed = || "対象ディスプレイを取得できません".to_string();
+            requested.map_err(|error| error.to_string())?;
+            let screens = receiver.recv_timeout(Duration::from_secs(5)).map_err(|_| failed())?;
+            if screens.is_empty() {
+                Err(failed())
+            } else {
+                Ok(screens)
+            }
         })
-        .map_err(|error| error.to_string())?;
-        let screens = receiver
-            .recv_timeout(Duration::from_secs(5))
-            .map_err(|_| "対象ディスプレイを取得できません".to_string())?;
-        if screens.is_empty() {
-            Err("対象ディスプレイを取得できません".into())
-        } else {
-            Ok(screens)
-        }
     }
 
     /// NSScreenは左下原点なので、主ディスプレイ（先頭）の高さを基準に左上原点へ直す。
@@ -507,14 +601,16 @@ mod platform {
     mod tests {
         use super::*;
 
+        /// 実際の最前面のウィンドウを読むだけ（動かさない）。読むのにかかった時間を出す。
+        /// アクセシビリティの許可がある端末で `cargo test -- --ignored --nocapture front_window` と動かす。
         #[test]
-        fn parses_the_applescript_window() {
-            assert_eq!(
-                parse_window("512, -1440, -200, 800.4, 600\n"),
-                Some((512, Rect { x: -1440, y: -200, width: 800, height: 600 }))
-            );
-            assert_eq!(parse_window("10,20,30,40"), None);
-            assert_eq!(parse_window(""), None);
+        #[ignore]
+        fn reads_the_front_window_quickly() {
+            for _ in 0..5 {
+                let started = std::time::Instant::now();
+                let result = front_window().map(|window| (window.key, window.frame));
+                println!("{:?} in {:.1} ms", result, started.elapsed().as_secs_f64() * 1000.0);
+            }
         }
     }
 }
@@ -602,7 +698,13 @@ mod platform {
         1
     }
 
-    pub fn screens(_app: &AppHandle) -> Result<Vec<Screen>, String> {
+    pub fn screens_later(
+        _app: &AppHandle,
+    ) -> Box<dyn FnOnce() -> Result<Vec<Screen>, String> + Send> {
+        Box::new(screens)
+    }
+
+    fn screens() -> Result<Vec<Screen>, String> {
         let mut screens: Vec<Screen> = Vec::new();
         unsafe {
             EnumDisplayMonitors(
@@ -635,8 +737,10 @@ mod platform {
         Err(UNSUPPORTED.into())
     }
 
-    pub fn screens(_app: &AppHandle) -> Result<Vec<Screen>, String> {
-        Err(UNSUPPORTED.into())
+    pub fn screens_later(
+        _app: &AppHandle,
+    ) -> Box<dyn FnOnce() -> Result<Vec<Screen>, String> + Send> {
+        Box::new(|| Err(UNSUPPORTED.into()))
     }
 }
 

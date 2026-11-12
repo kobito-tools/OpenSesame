@@ -237,7 +237,7 @@ GitHub のリポジトリの紹介画像（Social preview、1280×640）を、�
 
 アクセシビリティの許可はアプリのコード署名識別子とパスに紐づきます。ad-hoc 署名により識別子は `io.github.kobito-tools.opensesame` で固定されます。未署名だとビルドのたびに識別子が変わり、許可が定着しません。ビルドし直して差し替えた際に反応しなくなった場合は、一覧から項目を削除して追加し直します。
 
-ウィンドウ整形は `osascript` で System Events を操作するため、初回に「オートメーション」の許可ダイアログが出ます。説明文は `src-tauri/Info.plist` の `NSAppleEventsUsageDescription` です。
+ウィンドウ整形は、アクセシビリティ API（`AXUIElement`）で最前面のウィンドウを直接読み書きします（`window_layout.rs`）。キーの監視と同じアクセシビリティの許可で動き、「オートメーション」の許可は要りません。以前は `osascript` で System Events を2回呼んでいて、1回の整形に 0.4〜0.9 秒かかっていました。画面の一覧（`NSScreen`）はメインスレッドでしか読めないので、ウィンドウを読む前に頼んでおき、待ち時間を重ねています。
 
 ## macOSのキーフックについて
 
@@ -245,11 +245,19 @@ macOSでは `src-tauri/src/tap_macos.rs` で CGEventTap を直接張っていま
 
 rdev の `grab` はキー押下のたびに Text Services Manager でキーの文字表記を引きますが、このAPIはメインスレッドでの呼び出しを強制します。`grab` は専用スレッドで動くため、最初のキー押下で必ず `dispatch_assert_queue` に引っかかり SIGTRAP で落ちます。文字表記は本アプリでは使いません。
 
-自前のタップはアプリのメインランループに繋いであり、コールバックもメインスレッドで動きます。そのため AppKit に触れても安全です。OSにタップを切られた場合（`kCGEventTapDisabledByTimeout` など）はコールバック内で張り直します。修飾キーの押下と解放は、flagsChanged イベントのデバイス固有ビットで判別しています。
+自前のタップは、専用のスレッド（`opensesame-keys`、優先度は利用者の操作向け）のランループに繋いであります。メインスレッドに繋ぐと、設定画面やパネルの描画でメインスレッドが忙しい間、Mac 全体のキー入力がタップの順番待ちで遅れるためです。コールバックは AppKit に触れません。押したキーに当たる項目を探すだけにし、保存時の検査のやり直しや起動は別のスレッドで行います。OSにタップを切られた場合（`kCGEventTapDisabledByTimeout` など）はコールバック内で張り直します。修飾キーの押下と解放は、flagsChanged イベントのデバイス固有ビットで判別しています。
 
 AppKit に触れる処理（ウィンドウ表示、ディスプレイの照会）は、`run_on_main_thread` でメインスレッドへ回してください。重い処理をタップのコールバックで直接行うと、OSにタップを切られます。
 
 Windows では rdev の `grab`（低レベルキーボードフック）を使っています。
+
+## 反応の速さを測る
+
+`OPENSESAME_TRACE=1` を付けて起動すると、キーを押してからパネルが出るまで・整形が終わるまで・項目を開き終わるまでの時間を、標準エラーへ出します（`trace.rs`）。
+
+```bash
+OPENSESAME_TRACE=1 "/Applications/kobito-tools/OpenSesame!.app/Contents/MacOS/OpenSesame"
+```
 
 ## 半透明の作り方
 

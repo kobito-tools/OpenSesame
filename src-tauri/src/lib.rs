@@ -12,6 +12,7 @@ mod series;
 mod storage;
 #[cfg(target_os = "macos")]
 mod tap_macos;
+mod trace;
 mod wallpaper;
 mod window_layout;
 

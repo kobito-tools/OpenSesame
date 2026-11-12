@@ -97,10 +97,6 @@ OpenSesame! needs Accessibility permission to notice your key presses while you 
 
 Within a few seconds the guide disappears and OpenSesame! starts listening. You do not need to restart it.
 
-### Allow Automation
-
-The first time you use a window layout, macOS asks whether “OpenSesame!” may control “System Events”. Click **Allow**.
-
 ### Switch the settings window to English
 
 The settings window starts in Japanese. Use the language menu at the top right to choose **English**. The menu bar items follow the language the next time OpenSesame! starts.
@@ -243,7 +239,7 @@ Click the OpenSesame! icon in the menu bar and choose **Quit OpenSesame!**.
 
 ### Windows are not laid out
 
-Open **System Settings → Privacy & Security → Automation** and make sure “System Events” is turned on under OpenSesame!.
+Window layouts use the same Accessibility permission as the keys. Open **System Settings → Privacy & Security → Accessibility** and make sure OpenSesame! is turned on. Some windows, such as dialogs or apps that fix their own size, cannot be moved or resized; nothing changes for them.
 
 ### setup.sh stops with “A repository with the same app ID exists in another location”
 
