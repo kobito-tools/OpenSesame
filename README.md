@@ -239,7 +239,7 @@ Click the OpenSesame! icon in the menu bar and choose **Quit OpenSesame!**.
 
 ### Windows are not laid out
 
-Window layouts use the same Accessibility permission as the keys. Open **System Settings → Privacy & Security → Accessibility** and make sure OpenSesame! is turned on. Some windows, such as dialogs or apps that fix their own size, cannot be moved or resized; nothing changes for them.
+Window layouts use the same Accessibility permission as the keys. Open **System Settings → Privacy & Security → Accessibility** and make sure OpenSesame! is turned on. For a window that cannot be moved that way, OpenSesame! tries again through “System Events”; the first time, macOS asks whether OpenSesame! may control it. Click **Allow** (you can check it later under **Automation**). Some windows, such as dialogs or apps that fix their own size, cannot be moved or resized at all; nothing changes for them.
 
 ### setup.sh stops with “A repository with the same app ID exists in another location”
 
